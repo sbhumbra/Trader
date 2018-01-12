@@ -1,12 +1,12 @@
-import scipy.io as sio
-from binance.client import Client
+import manager as M
+import keyboard
 
-api_things = sio.loadmat("api_things.mat")
-
-client = Client(api_things["api_key"][0]
-                , api_things["api_secret"][0]
-                )
-
-info = client.get_exchange_info()
-
-print(info)
+Autotrader = M.Manager()
+BRun = True
+while BRun:
+    Autotrader.trade()
+    print('making loads')
+    # listen for stop key
+    if keyboard.is_pressed('space'):
+        print('buy lambo')
+        BRun = False

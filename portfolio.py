@@ -4,7 +4,7 @@ import pandas as pd
 # All prices in USD/EUR
 
 class Portfolio:
-    def __init__(self, haven_coin):
+    def __init__(self, haven_coin, filename=''):
         self.haven_coin = haven_coin
         # instantiate null ledger
         d = {'transaction_id': [], 'type_coin_sold': [], 'num_coin_sold': [], 'type_coin_bought': [],
@@ -13,6 +13,13 @@ class Portfolio:
 
         d = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
         self.coin_summary = pd.DataFrame(data=d)
+
+        if filename:
+            self.rebuild(filename)
+
+    def rebuild(self, filename):
+        # reconstruct ledger from file
+        pass
 
     def value_portfolio(self):
         # value the portfolio using the haven conversion
@@ -54,7 +61,3 @@ class Portfolio:
     def withdraw(self, coin_number, coin_type, eur_amount_withdrawn):
         # insert a transaction that makes coin_type disappear
         pass
-
-
-P = Portfolio([], [])
-print(P.ledger)

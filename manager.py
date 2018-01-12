@@ -13,3 +13,11 @@ class Manager:
         self.portfolio = p.Portfolio(self.haven_coin)
         self.forecaster = f.Forecaster(self.haven_coin)  # to be able to go from usdt to real money
         self.exchange = e.Exchange(ccxt.binance(), 0.01 / 100, 0.01 / 100, self.haven_coin)
+
+    def trade(self):
+        # make loads of money
+        pass
+
+    def stop_trading(self):
+        # stop trading so we can withdraw loads of money
+        pass
