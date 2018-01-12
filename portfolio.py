@@ -4,7 +4,8 @@ import pandas as pd
 # All prices in USD/EUR
 
 class Portfolio:
-    def __init__(self):
+    def __init__(self, haven_coin):
+        self.haven_coin = haven_coin
         # instantiate null ledger
         d = {'transaction_id': [], 'type_coin_sold': [], 'num_coin_sold': [], 'type_coin_bought': [],
              'num_coin_bought': [], 'time_completed': []}
@@ -13,12 +14,12 @@ class Portfolio:
         d = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
         self.coin_summary = pd.DataFrame(data=d)
 
-    def value_portfolio(self, haven):
+    def value_portfolio(self):
         # value the portfolio using the haven conversion
         # likely loop value_coin_holding
         pass
 
-    def value_coin_holding(self, haven, coin_type):
+    def value_coin_holding(self, coin_type):
         # coin_type argument in case we just want the value of one coin
         pass
 
@@ -30,11 +31,11 @@ class Portfolio:
         # return average price paid per coin
         pass
 
-    def current_profit_loss_for_coin(self, haven, coin_type):
+    def current_profit_loss_for_coin(self, coin_type):
         # percent difference between current market price per coin and average price paid per coin
         pass
 
-    def update_avg_price_paid_for_coin(self, haven, coin_type):
+    def update_avg_price_paid_for_coin(self, coin_type):
         # work out the average price paid per coin in fiat currency
         pass
 
