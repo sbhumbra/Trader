@@ -7,9 +7,10 @@ class Portfolio:
     def __init__(self, haven_coin, filename=''):
         self.haven_coin = haven_coin
         # instantiate null ledger
-        d = {'transaction_id': [], 'type_coin_sold': [], 'num_coin_sold': [], 'type_coin_bought': [],
-             'num_coin_bought': [], 'time_completed': []}
-        self.ledger = pd.DataFrame(data=d)
+        self.df_transaction_format = {'transaction_id': [], 'type_coin_sold': [], 'num_coin_sold': [],
+                                      'type_coin_bought': [],
+                                      'num_coin_bought': [], 'time_completed': []}
+        self.ledger = pd.DataFrame(data=self.df_transaction_format)
 
         d = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
         self.coin_summary = pd.DataFrame(data=d)
@@ -19,6 +20,10 @@ class Portfolio:
 
     def rebuild(self, filename):
         # reconstruct ledger from file
+        pass
+
+    def record_transaction(self, df_transaction):
+        # add transactions to the ledger
         pass
 
     def value_portfolio(self):
@@ -58,6 +63,6 @@ class Portfolio:
         # insert a transaction that makes coin_type appear
         pass
 
-    def withdraw(self, coin_number, coin_type, eur_amount_withdrawn):
+    def withdraw(self, eur_amount_withdrawn, coin_type, coin_number):
         # insert a transaction that makes coin_type disappear
         pass
