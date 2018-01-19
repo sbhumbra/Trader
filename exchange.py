@@ -18,9 +18,13 @@ class Exchange:
         pass
 
     def query_order(self, df_transaction):
-        # this time we must have the id - it checks the status of the transaction on the marketplace.
-        # if gone thru, fills in num_coin_bought and time_completed
-        # otherwise nothing.  Return bool true/false if gone thru or not
+        # This time we must have the id - it checks the status of the transaction on the marketplace.
+        # If gone thru, fills in num_coin_bought and time_completed
+        #   otherwise nothing.
+        # df_transcation is a dataframe and can contain many orders
+        # It is passed as reference
+        # If an order already has an id, don't query it
+        # Return True/False if ALL orders completed
         pass
 
     def cancel_order(self, df_transaction):
