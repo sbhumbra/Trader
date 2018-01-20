@@ -1,11 +1,9 @@
-import numpy as np
 import time
-import coin as C
 
 
 class Forecaster:
-    def __init__(self, haven_coin):
-        self.haven_coin = haven_coin
+    def __init__(self, exchange):
+        self.exchange = exchange
 
     def forecast(self, coin_type, timestamp):
         # timestamp (in future: vector of timestamps)

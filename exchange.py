@@ -1,4 +1,8 @@
 import numpy as np
+import coinstats as c
+import time
+import pandas as pd
+import ccxt
 
 
 # any of these queries can timeout error - handle gracefully
@@ -6,35 +10,127 @@ import numpy as np
 
 
 class Exchange:
-    def __init__(self, marketplace, buy_fee, sell_fee, haven_coin):
+    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0, sell_fee=0,
+                 haven_coin_type='USDT',
+                 filename_coinstats='', flag_fake_exchange=False):
         self.marketplace = marketplace
+        self.haven_marketplace = haven_marketplace
         self.buy_fee = buy_fee
         self.sell_fee = sell_fee
-        self.haven_coin = haven_coin
+        self.haven_coin_type = haven_coin_type
+        all_coin_types = coin_types.copy()
+        all_coin_types.append(haven_coin_type)
+        self.coinstats = c.CoinStats(all_coin_types, filename_coinstats)
+        self.flag_fake_exchange = flag_fake_exchange
 
     def place_order(self, df_transaction, price=np.nan):
         # place order, then update transaction_id.  num_coin_bought and time_completed will still be empty
         # price to be used if we don't want market rate and instead want to place a limit order
-        pass
+        if self.flag_fake_exchange:
+            # Assign all NaN transaction IDs a value
+            num_transactions = len(df_transaction.index)
+            for idx in range(0, num_transactions):
+                df_transaction.at[idx, 'transaction_id'] = idx
+        else:
+            pass
 
     def query_order(self, df_transaction):
         # This time we must have the id - it checks the status of the transaction on the marketplace.
         # If gone thru, fills in num_coin_bought and time_completed
         #   otherwise nothing.
-        # df_transcation is a dataframe and can contain many orders
+        # df_transaction is a dataframe and can contain many orders
         # It is passed as reference
-        # If an order already has an id, don't query it
+        # Don't query an order if it's already been completed
         # Return True/False if ALL orders completed
-        pass
+        num_transactions = len(df_transaction.index)
+        flag_all_orders_completed = np.full(num_transactions, False)
+        if self.flag_fake_exchange:
+            for idx in range(0, num_transactions):
+                try:
+                    if not flag_all_orders_completed[idx]:
+                        coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'type_coin_sold'])
+                        coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'type_coin_bought'])
+                        exchange_rate = coin_buy_price / coin_sell_price
+                        num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
+                        df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
+                        df_transaction.at[idx, 'time_completed'] = int(time.time())
+                        flag_all_orders_completed[idx] = True
+                except:
+                    pass
+        else:
+            pass
+        return all(flag_all_orders_completed)
 
     def cancel_order(self, df_transaction):
-        # cancel order with this transaction_id
-        pass
+        # cancel incomplete orders
+        if self.flag_fake_exchange:
+            pass
+        else:
+            pass
 
-    def get_price_history(self, coin, period, n_periods):
+    # Price is a special case of price history (period = 1m, n_periods = 1)
+    # Last valid value logic addresses price or price history accordingly
+    def get_price(self, coin_type):
+        # Returns [$]
+        price = self.price_history(haven_coin, '1m', 1)
+        self.last_valid_price = price
+        return price
+
+    def get_price_history(self, coin_type, period, n_periods):
         # gets price history
+        # Returns [$]
+        BIsHaven = (self.name == haven_coin.name)
+        BIsSinglePrice = (period == '1m') and (n_periods == 1)
+
+        # Get Haven Price History [$/Haven]
+        if BIsHaven:
+            # Price fetched from exchange will already be USD, therefore conversion factor is 1
+            haven_to_usd = 1
+        elif BIsSinglePrice:
+            haven_to_usd = haven_coin.last_valid_price
+        else:
+            haven_to_usd = haven_coin.last_valid_price_history
+
+        # Get Price History [Haven/Coin], for a given exchange
+        if BIsHaven:
+            coin_pair = haven_coin.name + '/USD'
+        else:
+            coin_pair = self.name + '/' + haven_coin.name
+
+        try:
+            # Get OHLCV in Haven per Coin
+            # Last element is most recent (??)
+            all_OHLCV = self.exchange.fetch_ohlcv(coin_pair, period)
+            # Get V (closing value), still in Haven per Coin
+            selected_OHLCV = np.asarray(all_OHLCV[-n_periods:], 'float')
+            # Price [$] = Haven x Haven Price, elementwise
+            price_history = np.multiply(selected_OHLCV[:, -2], haven_to_usd)
+            # Store Price history if not single value
+            if BIsSinglePrice:
+                price_history = np.asscalar(price_history)
+            else:
+                self.last_valid_price_history = price_history
+            return price_history
+        except:
+            if BIsSinglePrice:
+                return self.last_valid_price
+            else:
+                return self.last_valid_price_history
+
+    def get_supply(self, coin_type):
+        # gets supply - will have to query coinmarketcap for this one
+        # only coinmarketcap has the total supply
+        try:
+            ticker = ccxt.coinmarketcap().fetch_ticker(coin_type + '/USD')
+            supply = ticker['info']['available_supply']
+            self.coinstats.set_last_valid_supply(coin_type, supply)
+        except:
+            supply = self.coinstats.get_last_valid_supply(coin_type)
+
+        return supply
+
+    def get_exchange_rate(self, coin_type, coin_type_base):
         pass
 
-    def get_supply(self, coin):
-        # gets supply - will have to query coinmarketcap for this one
+    def get_exchange_rate_history(sel, coin_type, coin_type_base):
         pass

@@ -2,7 +2,10 @@ import manager as M
 import keyboard
 import time
 
-Autotrader = M.Manager()
+filename_coinstats = ''
+filename_portfolio = ''
+
+Autotrader = M.Manager(filename_coinstats=filename_coinstats, filename_portfolio=filename_portfolio)
 BRun = True
 tAutotraderWait = 5  # minutes
 while BRun:

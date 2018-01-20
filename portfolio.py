@@ -4,19 +4,20 @@ import pandas as pd
 # All prices in USD/EUR
 
 class Portfolio:
-    def __init__(self, haven_coin, filename=''):
-        self.haven_coin = haven_coin
+    def __init__(self, exchange, filename=''):
+        self.exchange = exchange
         # instantiate null ledger
         self.df_transaction_format = {'transaction_id': [], 'type_coin_sold': [], 'num_coin_sold': [],
                                       'type_coin_bought': [],
                                       'num_coin_bought': [], 'time_completed': []}
-        self.ledger = pd.DataFrame(data=self.df_transaction_format)
 
-        d = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
-        self.coin_summary = pd.DataFrame(data=d)
+        self.df_coin_summary_format = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
 
         if filename:
             self.rebuild(filename)
+        else:
+            self.ledger = pd.DataFrame(data=self.df_transaction_format)
+            self.coin_summary = pd.DataFrame(data=self.df_coin_summary_format)
 
     def rebuild(self, filename):
         # reconstruct ledger from file
