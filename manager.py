@@ -3,9 +3,9 @@ import time
 import numpy as np
 import pandas as pd
 
-import exchange as e
-import forecaster as f
-import portfolio as p
+import exchange as E
+import forecaster as F
+import portfolio as P
 
 
 class Manager:
@@ -18,17 +18,17 @@ class Manager:
         self.haven_coin_type = 'USDT'
 
         # robust wrapper for placing / querying / cancelling orders & getting prices
-        self.exchange = e.Exchange(coin_types=self.list_of_coin_types, marketplace=ccxt.binance(),
+        self.exchange = E.Exchange(coin_types=self.list_of_coin_types, marketplace=ccxt.binance(),
                                    haven_marketplace=ccxt.bitfinex(), buy_fee=0.01 / 100,
                                    sell_fee=0.01 / 100, haven_coin_type=self.haven_coin_type,
                                    filename_coinstats=filename_coinstats,
                                    flag_fake_exchange=True)  # FAKE EXCHANGE -- CHANGE HERE !!
 
         # portfolio contains list of completed transactions
-        self.portfolio = p.Portfolio(self.exchange, filename_portfolio)
+        self.portfolio = P.Portfolio(self.exchange, filename_portfolio)
 
         # for predicting future prices / exchange rates
-        self.forecaster = f.Forecaster(self.exchange)
+        self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
         self.threshold_buy = 5  # euros
@@ -204,8 +204,9 @@ class Manager:
         # Each transaction sells a given number of a haven in exchange for coin_type
         for idx, coin_type in enumerate(coin_types_to_buy):
             if total_liquid_funds >= self.buy_value:
-                transaction_to_make = pd.DataFrame(data=[[self.haven_coin_type, number_of_haven_to_sell[idx], coin_type]],
-                                                   columns=['type_coin_sold', 'num_coin_sold', 'type_coin_bought'])
+                transaction_to_make = pd.DataFrame(
+                    data=[[self.haven_coin_type, number_of_haven_to_sell[idx], coin_type]],
+                    columns=['type_coin_sold', 'num_coin_sold', 'type_coin_bought'])
                 # concat will set nan all unpopulated df values .e.f ID / time completed
                 transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
                 total_liquid_funds -= self.buy_value  # can we still afford transactions?

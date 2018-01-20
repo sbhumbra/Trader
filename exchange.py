@@ -1,5 +1,5 @@
 import numpy as np
-import coinstats as c
+import coinstats as C
 import time
 import pandas as pd
 import ccxt
@@ -8,20 +8,37 @@ import ccxt
 # any of these queries can timeout error - handle gracefully
 # some exchanges are back to front too - handle here
 
-
 class Exchange:
     def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0, sell_fee=0,
                  haven_coin_type='USDT',
                  filename_coinstats='', flag_fake_exchange=False):
+
+        #   Get coin-coin exchange rates from this marketplace (e.g. binance)
         self.marketplace = marketplace
-        self.haven_marketplace = haven_marketplace
+
+        #   Transaction fees on coin-coin marketplace
+        #   These are fraction i.e. buy_price = (1 + buy_fee)*quoted_buy_price
+        #                           sell_price = (1 - sell_fee)*quoted_sell_price
         self.buy_fee = buy_fee
         self.sell_fee = sell_fee
+
+        #   Get haven-FIAT exchange rate from this marketplace (e.g. bitfinex)
+        self.haven_marketplace = haven_marketplace
         self.haven_coin_type = haven_coin_type
+
+        #   Create repository for past data and methods for querying it
+        #   e.g. last valid price / max / min / average in window / variance in window / etc.
         all_coin_types = coin_types.copy()
         all_coin_types.append(haven_coin_type)
-        self.coinstats = c.CoinStats(all_coin_types, filename_coinstats)
+        self.coinstats = C.CoinStats(all_coin_types, filename_coinstats)
+
+        #   If TRUE, place/query/sell order functions won't actually use the exchange order API
         self.flag_fake_exchange = flag_fake_exchange
+
+        #   Tolerances (in seconds) within which the exchange will return the last valid value if a query fails
+        self.price_time_query_tolerance = 1
+        self.supply_time_query_tolerance = 60
+        # self.exchange_rate_time_query_tolerance = 1 # not stored yet..
 
     def place_order(self, df_transaction, price=np.nan):
         # place order, then update transaction_id.  num_coin_bought and time_completed will still be empty
@@ -36,7 +53,7 @@ class Exchange:
 
     def query_order(self, df_transaction):
         # This time we must have the id - it checks the status of the transaction on the marketplace.
-        # If gone thru, fills in num_coin_bought and time_completed
+        # If gone through, fills in num_coin_bought and time_completed
         #   otherwise nothing.
         # df_transaction is a dataframe and can contain many orders
         # It is passed as reference
@@ -68,15 +85,24 @@ class Exchange:
         else:
             pass
 
+    def get_price(self, coin_type, timestamps=np.nan):
+        return 1
+
+    def get_supply(self, coin_type, timestamps=np.nan):
+        return 1
+
+    def get_exchange_rate(self, coin_type, coin_type_base, timestamps=np.nan):
+        return 1
+
     # Price is a special case of price history (period = 1m, n_periods = 1)
     # Last valid value logic addresses price or price history accordingly
-    def get_price(self, coin_type):
+    def get_price_wip(self, coin_type):
         # Returns [$]
         price = self.price_history(haven_coin, '1m', 1)
         self.last_valid_price = price
         return price
 
-    def get_price_history(self, coin_type, period, n_periods):
+    def get_price_history_wip(self, coin_type, period, n_periods):
         # gets price history
         # Returns [$]
         BIsHaven = (self.name == haven_coin.name)
@@ -117,7 +143,7 @@ class Exchange:
             else:
                 return self.last_valid_price_history
 
-    def get_supply(self, coin_type):
+    def get_supply_wip(self, coin_type):
         # gets supply - will have to query coinmarketcap for this one
         # only coinmarketcap has the total supply
         try:
@@ -129,8 +155,8 @@ class Exchange:
 
         return supply
 
-    def get_exchange_rate(self, coin_type, coin_type_base):
+    def get_exchange_rate_wip(self, coin_type, coin_type_base):
         pass
 
-    def get_exchange_rate_history(sel, coin_type, coin_type_base):
+    def get_exchange_rate_history_wip(sel, coin_type, coin_type_base):
         pass
