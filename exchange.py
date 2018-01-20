@@ -67,7 +67,7 @@ class Exchange:
                     if not flag_all_orders_completed[idx]:
                         coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'type_coin_sold'])
                         coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'type_coin_bought'])
-                        exchange_rate = coin_buy_price / coin_sell_price
+                        exchange_rate = coin_sell_price / coin_buy_price # ($/H) / ($/B) -> B/H
                         num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
                         df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
                         df_transaction.at[idx, 'time_completed'] = int(time.time())
@@ -81,7 +81,13 @@ class Exchange:
     def cancel_order(self, df_transaction):
         # cancel incomplete orders
         if self.flag_fake_exchange:
-            pass
+            id_transactions_to_cancel = []
+            num_transactions = len(df_transaction.index)
+            for idx in range(0, num_transactions):
+                if np.isnan(df_transaction.at[idx, 'time_completed']):
+                    id_transactions_to_cancel.append(idx)
+
+            df_transaction.drop(df_transaction.index[id_transactions_to_cancel],inplace=True)
         else:
             pass
 
