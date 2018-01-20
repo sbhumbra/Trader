@@ -13,19 +13,23 @@ class Portfolio:
 
         self.df_coin_summary_format = {'type_coin': [], 'average_price_paid': [], 'num_coin': []}
 
+        self.ledger = pd.DataFrame(data=self.df_transaction_format)
+        self.coin_summary = pd.DataFrame(data=self.df_coin_summary_format)
+
         if filename:
             self.rebuild(filename)
-        else:
-            self.ledger = pd.DataFrame(data=self.df_transaction_format)
-            self.coin_summary = pd.DataFrame(data=self.df_coin_summary_format)
 
     def rebuild(self, filename):
         # reconstruct ledger from file
         pass
 
     def record_transaction(self, df_transaction):
-        # add transactions to the ledger
-        pass
+        #   Add transaction(s) to the ledger
+        self.ledger = pd.concat([self.ledger, df_transaction], ignore_index=True)
+        #   First update average pride paid (relies on past number of coins held)
+        self.update_avg_price_paid_for_coin(df_transaction)
+        #   ...now update number of coins held
+        self.update_num_coin_holding(df_transaction)
 
     def value_portfolio(self):
         # value the portfolio using the haven conversion
@@ -48,16 +52,20 @@ class Portfolio:
         # percent difference between current market price per coin and average price paid per coin
         pass
 
-    def update_avg_price_paid_for_coin(self, coin_type):
-        # work out the average price paid per coin in fiat currency
+    def update_avg_price_paid_for_coin(self, df_transaction):
+        #   Incrementally update average price paid using latest transaction
         pass
 
-    def update_num_coin_holding(self):
-        # update coin tallies
+    def update_num_coin_holding(self, df_transaction):
+        #   Incrementally update number of coins held using latest transaction
         pass
 
-    def update_avg_price_paid(self):
-        # average price paid for all coins
+    def calculate_average_price_paid_per_coin(self):
+        #   Calculate average price paid per coin from ledger
+        pass
+
+    def calculate_num_coin_holding(self):
+        #   Calculate number of coins held from ledger
         pass
 
     def deposit(self, eur_amount_paid, coin_type, coin_number):
