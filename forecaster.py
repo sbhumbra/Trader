@@ -9,11 +9,10 @@ class Forecaster:
         # timestamp (in future: vector of timestamps)
         now = int(time.time())
         dt = int(timestamp) - now
-        coin = C.Coin(coin_type)
-        current_price = coin.price(self.haven_coin)
-        last_prices = coin.price_history(self.haven_coin, '1m', 10)
-        dPrice = current_price - last_prices[1]
-        future_price = current_price + dPrice * dt / (10 * 60)
+        current_price = self.exchange.get_price(coin_type,now)
+        last_price = self.exchange.get_price(coin_type,now - 10*60)
+        dprice_dt = (current_price - last_price)/(10*60)
+        future_price = current_price + dprice_dt * dt
         pass
 
     def validate(self, coin):
