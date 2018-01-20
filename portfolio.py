@@ -37,12 +37,13 @@ class Portfolio:
         pass
 
     def value_coin_holding(self, coin_type):
-        # coin_type argument in case we just want the value of one coin
-        pass
+        num_coins = self.num_coin_holding(coin_type)
+        haven_price = self.exchange.get_price()  # shortcut for haven
+        return num_coins * haven_price
 
     def num_coin_holding(selfs, coin_type):
         # return number of coins held for a coin type
-        pass
+        return 10
 
     def avg_price_paid_for_coin(self, coin_type):
         # return average price paid per coin
