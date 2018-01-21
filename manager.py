@@ -206,7 +206,7 @@ class Manager:
             if total_liquid_funds >= self.buy_value:
                 transaction_to_make = pd.DataFrame(
                     data=[[self.haven_coin_type, number_of_haven_to_sell[idx], coin_type]],
-                    columns=['type_coin_sold', 'num_coin_sold', 'type_coin_bought'])
+                    columns=['coin_type_sold', 'num_coin_sold', 'coin_type_bought'])
                 # concat will set nan all unpopulated df values .e.f ID / time completed
                 transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
                 total_liquid_funds -= self.buy_value  # can we still afford transactions?
@@ -222,7 +222,7 @@ class Manager:
         # Each transaction sells a given number of a coin type in exchange for haven
         for idx, coin_type in enumerate(coin_types_to_sell):
             transaction_to_make = pd.DataFrame(data=[[coin_type, number_of_coins_to_sell[idx], self.haven_coin_type]],
-                                               columns=['type_coin_sold', 'num_coin_sold', 'type_coin_bought'])
+                                               columns=['coin_type_sold', 'num_coin_sold', 'coin_type_bought'])
             # concat will set nan all unpopulated df values e.g. ID / time completed
             transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
 

@@ -65,9 +65,9 @@ class Exchange:
             for idx in range(0, num_transactions):
                 try:
                     if not flag_all_orders_completed[idx]:
-                        coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'type_coin_sold'])
-                        coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'type_coin_bought'])
-                        exchange_rate = coin_sell_price / coin_buy_price # ($/H) / ($/B) -> B/H
+                        coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'coin_type_sold'])
+                        coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'coin_type_bought'])
+                        exchange_rate = coin_sell_price / coin_buy_price  # ($/H) / ($/B) -> B/H
                         num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
                         df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
                         df_transaction.at[idx, 'time_completed'] = int(time.time())
@@ -87,25 +87,25 @@ class Exchange:
                 if np.isnan(df_transaction.at[idx, 'time_completed']):
                     id_transactions_to_cancel.append(idx)
 
-            df_transaction.drop(df_transaction.index[id_transactions_to_cancel],inplace=True)
+            df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
         else:
             pass
 
     def get_price(self, coin_type='haven', timestamps=np.nan):
-        if coin_type=='haven':
-            return self.get_price(self.haven_coin_type,timestamps)
+        if coin_type == 'haven':
+            return self.get_price(self.haven_coin_type, timestamps)
         else:
             pass
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
-        if coin_type=='haven':
-            return self.get_supply(self.haven_coin_type,timestamps)
+        if coin_type == 'haven':
+            return self.get_supply(self.haven_coin_type, timestamps)
         else:
             pass
 
     def get_exchange_rate(self, coin_type, coin_type_base='haven', timestamps=np.nan):
-        if coin_type_base=='haven':
-            return self.get_exchange_rate(coin_type,self.haven_coin_type,timestamps)
+        if coin_type_base == 'haven':
+            return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps)
         else:
             pass
 
