@@ -27,8 +27,10 @@ class Portfolio:
     def record_transaction(self, df_transaction):
         #   Add transaction(s) to the ledger
         self.ledger = pd.concat([self.ledger, df_transaction], ignore_index=True)
+
         #   First update average pride paid (relies on past number of coins held)
         self.update_avg_price_paid_for_coin(df_transaction)
+
         #   ...now update number of coins held
         self.update_num_coin_holding(df_transaction)
 
@@ -77,11 +79,52 @@ class Portfolio:
 
     def update_avg_price_paid_for_coin(self, df_transaction):
         #   Incrementally update average price paid using latest transaction
-        pass
+        df_t = df_transaction  # chained for readability
+        s = self.coin_summary  # chained for readability
+
+        #   First get all types of coin bought
+        coin_types_bought = df_t['coin_type_bought']
+        coin_types_bought = coin_types_bought.tolist()
+        coin_types_bought = list(set(coin_types_bought))  # unique values
+
+        #   For each type of coin bought, get set of transactions
+        #   Work out total price paid and number bought
+        #   Calculate new average price using old average price, previous number owned, and latest transaction
+        for coin_type in coin_types_bought:
+            df_c = df_t.loc[df_t.loc[:, 'coin_type_bought'] == coin_type]  # transaction subset
+            num_coins_bought = 0
+            price_paid = 0
+            for idx in df_c.index:
+                num_coins_bought += df_c.loc[idx, 'num_coin_bought']
+                coin_type_sold = df_c.loc[idx, 'coin_type_sold']
+                num_coin_sold = df_c.loc[idx, 'num_coin_sold']
+                time_sold = df_c.loc[idx, 'time_completed']
+                price_paid += num_coin_sold * self.exchange.get_price(coin_type_sold, time_sold)
+
+            num_coins_bought_prev = self.num_coin_holding(coin_type)
+            avg_price_paid_prev = self.avg_price_paid_for_coin(coin_type)
+            if np.isnan(avg_price_paid_prev):
+                price_paid_prev = 0
+            else:
+                price_paid_prev = num_coins_bought_prev * avg_price_paid_prev
+
+            avg_price_paid = (price_paid + price_paid_prev) / (num_coins_bought + num_coins_bought_prev)
+
+            s.loc[s.loc[:, 'coin_type'] == coin_type, 'average_price_paid'] = avg_price_paid
 
     def update_num_coin_holding(self, df_transaction):
         #   Incrementally update number of coins held using latest transaction
-        pass
+        df_t = df_transaction  # chained for readability
+        s = self.coin_summary  # chained for readability
+
+        #   Iterate through all transactions, adding coins bought and subtracting coins sold
+        for idx in df_t.index:
+            coin_type_bought = df_t.loc[idx, 'coin_type_bought']
+            num_coin_bought = df_t.loc[idx, 'num_coin_bought']
+            coin_type_sold = df_t.loc[idx, 'coin_type_sold']
+            num_coin_sold = df_t.loc[idx, 'num_coin_sold']
+            s.loc[s.loc[:, 'coin_type'] == coin_type_bought, 'num_coin'] += num_coin_bought
+            s.loc[s.loc[:, 'coin_type'] == coin_type_sold, 'num_coin'] -= num_coin_sold
 
     def calculate_average_price_paid_per_coin(self):
         #   Calculate average price paid per coin from ledger
