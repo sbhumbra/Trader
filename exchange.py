@@ -95,19 +95,19 @@ class Exchange:
         if coin_type == 'haven':
             return self.get_price(self.haven_coin_type, timestamps)
         else:
-            pass
+            return 1
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
         if coin_type == 'haven':
             return self.get_supply(self.haven_coin_type, timestamps)
         else:
-            pass
+            return 1
 
     def get_exchange_rate(self, coin_type, coin_type_base='haven', timestamps=np.nan):
         if coin_type_base == 'haven':
             return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps)
         else:
-            pass
+            return 1
 
     # Price is a special case of price history (period = 1m, n_periods = 1)
     # Last valid value logic addresses price or price history accordingly
