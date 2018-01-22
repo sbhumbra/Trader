@@ -123,6 +123,8 @@ class Exchange:
     def get_price(self, coin_type='haven', timestamps=np.nan):
         if coin_type == 'haven':
             return self.get_price(self.haven_coin_type, timestamps)
+        elif coin_type == 'EUR':
+            return 1
         else:
             exchange_rate = self.get_exchange_rate(coin_type, timestamps)
             if self.haven_coin_type == 'USDT':
