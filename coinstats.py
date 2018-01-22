@@ -46,9 +46,9 @@ class CoinStats:
 
     def get_stats_last_valid_price_supply_property(self, coin_type, column):
         s = self.stats_last_valid_price_supply  # accessed as reference therefore same memory
-        p = s.loc[s.loc[:, 'coin_type'] == coin_type, column]
+        p = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, column]
         return np.asscalar(p.values)
 
     def set_stats_last_valid_price_supply_property(self, coin_type, column, value):
         s = self.stats_last_valid_price_supply  # accessed as reference therefore same memory
-        s.loc[s.loc[:, 'coin_type'] == coin_type, column] = value
+        s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, column] = value

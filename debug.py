@@ -31,9 +31,10 @@ def db_cancel_dummy_order(test_transaction):
 
 def db_manage_orders():
     test_manager = M.Manager()
-    test_transaction = test_manager.sell_coins(['BTC', 'ETH', 'BNB'], [10, 10, 10])
-    test_manager.manage_orders(test_transaction, 60)
+    test_manager.portfolio.deposit(1000,'USDT',1000)
     test_transaction = test_manager.buy_coins(['BTC', 'ETH', 'BNB'], [10, 10, 10], 100000)
+    test_manager.manage_orders(test_transaction, 60)
+    test_transaction = test_manager.sell_coins(['BTC', 'ETH', 'BNB'], [9, 9, 9])
     test_manager.manage_orders(test_transaction, 60)
     return test_manager.portfolio
 

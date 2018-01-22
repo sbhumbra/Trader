@@ -1,5 +1,6 @@
 import pandas as pd
 import numpy as np
+import time
 
 
 # All prices in USD/EUR
@@ -32,10 +33,10 @@ class Portfolio:
         self.ledger = pd.concat([self.ledger, df_transaction], ignore_index=True)
 
         #   First update average pride paid (relies on past number of coins held)
-        #self.update_avg_price_paid_for_coin(df_transaction)
+        self.update_avg_price_paid_for_coin(df_transaction)
 
         #   ...now update number of coins held
-        #self.update_num_coin_holding(df_transaction)
+        self.update_num_coin_holding(df_transaction)
 
     def value_portfolio(self):
         #   Total portfolio value
@@ -58,7 +59,7 @@ class Portfolio:
     def num_coin_holding(self, coin_type):
         s = self.coin_summary  # accessed as reference therefore same memory
         try:
-            p = s.loc[s.loc[:, 'coin_type'] == coin_type, 'num_coin']
+            p = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'num_coin']
             return np.asscalar(p.values)
         except:
             return 0
@@ -66,7 +67,7 @@ class Portfolio:
     def avg_price_paid_for_coin(self, coin_type):
         s = self.coin_summary  # accessed as reference therefore same memory
         try:
-            p = s.loc[s.loc[:, 'coin_type'] == coin_type, 'average_price_paid']
+            p = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'average_price_paid']
             return np.asscalar(p.values)
         except:
             return np.nan
@@ -94,7 +95,7 @@ class Portfolio:
         #   Work out total price paid and number bought
         #   Calculate new average price using old average price, previous number owned, and latest transaction
         for coin_type in coin_types_bought:
-            df_c = df_t.loc[df_t.loc[:, 'coin_type_bought'] == coin_type]  # transaction subset
+            df_c = df_t.loc[df_t.loc[:, 'coin_type_bought'].astype(str) == coin_type]  # transaction subset
             num_coins_bought = 0
             price_paid = 0
             for idx in df_c.index:
@@ -113,7 +114,15 @@ class Portfolio:
 
             avg_price_paid = (price_paid + price_paid_prev) / (num_coins_bought + num_coins_bought_prev)
 
-            s.loc[s.loc[:, 'coin_type'] == coin_type, 'average_price_paid'] = avg_price_paid
+            s_query = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'average_price_paid']
+            if s_query.any():
+                s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'average_price_paid'] = avg_price_paid
+            else:
+                s = pd.concat(
+                    [s, pd.DataFrame([[coin_type, avg_price_paid]], columns=['coin_type', 'average_price_paid'])],
+                    ignore_index=True)
+
+        self.coin_summary = s
 
     def update_num_coin_holding(self, df_transaction):
         #   Incrementally update number of coins held using latest transaction
@@ -124,10 +133,23 @@ class Portfolio:
         for idx in df_t.index:
             coin_type_bought = df_t.loc[idx, 'coin_type_bought']
             num_coin_bought = df_t.loc[idx, 'num_coin_bought']
+            num_coin_bought_curr = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_bought, 'num_coin']
+            flag_update = num_coin_bought_curr.values.any() and not np.isnan(num_coin_bought_curr.values)
+            if flag_update:
+                s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_bought, 'num_coin'] += num_coin_bought
+            else:
+                s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_bought, 'num_coin'] = num_coin_bought
+
             coin_type_sold = df_t.loc[idx, 'coin_type_sold']
             num_coin_sold = df_t.loc[idx, 'num_coin_sold']
-            s.loc[s.loc[:, 'coin_type'] == coin_type_bought, 'num_coin'] += num_coin_bought
-            s.loc[s.loc[:, 'coin_type'] == coin_type_sold, 'num_coin'] -= num_coin_sold
+            num_coin_sold_curr = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_sold, 'num_coin']
+            flag_update = num_coin_sold_curr.values.any() and not np.isnan(num_coin_sold_curr.values)
+            if flag_update:
+                s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_sold, 'num_coin'] -= num_coin_sold
+            else:
+                s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type_sold, 'num_coin'] = -1 * num_coin_sold
+
+        self.coin_summary = s
 
     def calculate_average_price_paid_per_coin(self):
         #   Calculate average price paid per coin from ledger
@@ -138,9 +160,19 @@ class Portfolio:
         pass
 
     def deposit(self, eur_amount_paid, coin_type, coin_number):
-        # insert a transaction that makes coin_type appear
-        pass
+        #   Insert a transaction that makes coin_type appear
+        #   Do this by treating EUR like a coin and recording the transaction
+        #   EUR price on the exchange is 1
+        df_t = pd.DataFrame({'transaction_id': [-1], 'coin_type_sold': ['EUR'], 'num_coin_sold': [eur_amount_paid],
+                             'coin_type_bought': [coin_type],
+                             'num_coin_bought': [coin_number], 'time_completed': [int(time.time())]})
+        self.record_transaction(df_t)
 
     def withdraw(self, eur_amount_withdrawn, coin_type, coin_number):
-        # insert a transaction that makes coin_type disappear
-        pass
+        #   Insert a transaction that makes coin_type disappear
+        df_t = pd.DataFrame({'transaction_id': [-1], 'coin_type_sold': [coin_type], 'num_coin_sold': [coin_number],
+                             'coin_type_bought': ['EUR'],
+                             'num_coin_bought': [eur_amount_withdrawn], 'time_completed': [int(time.time())]})
+        #   Record transaction without updating average price paid per coin (since EUR isn't really a coin)
+        self.ledger = pd.concat([self.ledger, df_t], ignore_index=True)
+        self.update_num_coin_holding(df_t)
