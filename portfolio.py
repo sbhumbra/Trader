@@ -24,6 +24,9 @@ class Portfolio:
         # reconstruct ledger from file
         pass
 
+    def save(self, filename):
+        pass
+
     def record_transaction(self, df_transaction):
         #   Add transaction(s) to the ledger
         self.ledger = pd.concat([self.ledger, df_transaction], ignore_index=True)

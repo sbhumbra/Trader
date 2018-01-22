@@ -23,6 +23,9 @@ class CoinStats:
     def rebuild(self, filename):
         pass
 
+    def save(self, filename):
+        pass
+
     def get_last_valid_price(self, coin_type):
         price = self.get_stats_last_valid_price_supply_property(coin_type, 'last_valid_price')
         timestamp = self.get_stats_last_valid_price_supply_property(coin_type, 'price_timestamp')
