@@ -49,7 +49,24 @@ class Exchange:
             for idx in range(0, num_transactions):
                 df_transaction.at[idx, 'transaction_id'] = idx
         else:
-            pass
+            num_transactions = len(df_transaction.index)
+            if np.isnan(price):
+                for idx in range(0, num_transactions):
+                    to_buy = df_transaction.at[idx, 'coin_type_bought']
+                    to_sell = df_transaction.at[idx, 'coin_type_sold']
+                    amount_to_sell = df_transaction.at[idx, 'num_coin_sold']
+                    print('Buying' + to_buy + 'for' + amount_to_sell + ' ' + to_sell)
+                    if to_buy == self.haven_coin_type:
+                        out = self.marketplace.create_market_sell_order(
+                            to_sell + '/' + to_buy,
+                            amount_to_sell)
+                    else:
+                        out = self.marketplace.create_market_buy_order(
+                            to_buy + '/' + to_sell,
+                            amount_to_sell)
+                    df_transaction.at[idx, 'transaction_id'] = out['id']
+            else:
+                raise Exception("Limit orders unsupported")
 
     def query_order(self, df_transaction):
         # This time we must have the id - it checks the status of the transaction on the marketplace.
@@ -63,19 +80,23 @@ class Exchange:
         flag_all_orders_completed = np.full(num_transactions, False)
         if self.flag_fake_exchange:
             for idx in range(0, num_transactions):
-                try:
-                    if not flag_all_orders_completed[idx]:
-                        coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'coin_type_sold'])
-                        coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'coin_type_bought'])
-                        exchange_rate = coin_sell_price / coin_buy_price  # ($/H) / ($/B) -> B/H
-                        num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
-                        df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
-                        df_transaction.at[idx, 'time_completed'] = int(time.time())
-                        flag_all_orders_completed[idx] = True
-                except:
-                    pass
+                if not flag_all_orders_completed[idx]:
+                    coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'coin_type_sold'])
+                    coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'coin_type_bought'])
+                    exchange_rate = coin_sell_price / coin_buy_price  # ($/H) / ($/B) -> B/H
+                    num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
+                    df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
+                    df_transaction.at[idx, 'time_completed'] = int(time.time())
+                    flag_all_orders_completed[idx] = True
         else:
-            pass
+            for idx in range(0, num_transactions):
+                if not flag_all_orders_completed[idx]:
+                    order = self.marketplace.fetch_order(df_transaction.at[idx, 'transaction_id'])
+                    if order['status'] == 'closed':
+                        df_transaction.at[idx, 'num_coin_bought'] = order['amount']
+                        df_transaction.at[idx, 'time_completed'] = order['timestamp']
+                        flag_all_orders_completed[idx] = True
+
         return all(flag_all_orders_completed)
 
     def cancel_order(self, df_transaction):
@@ -89,13 +110,26 @@ class Exchange:
 
             df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
         else:
-            pass
+            id_transactions_to_cancel = []
+            num_transactions = len(df_transaction.index)
+            for idx in range(0, num_transactions):
+                order = self.marketplace.fetch_order(df_transaction.at[idx, 'transaction_id'])
+                if order['status'] == 'open':
+                    self.marketplace.cancel_order(df_transaction.at[idx, 'transaction_id'])
+                    id_transactions_to_cancel.append(idx)
+
+            df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
 
     def get_price(self, coin_type='haven', timestamps=np.nan):
         if coin_type == 'haven':
             return self.get_price(self.haven_coin_type, timestamps)
         else:
-            return 1
+            exchange_rate = self.get_exchange_rate(coin_type, timestamps)
+            if self.haven_coin_type == 'USDT':
+                fiat_exchange_rate = 1
+            else:
+                fiat_exchange_rate = self.haven_marketplace.fetch_ticker(self.haven_coin_type + '/' + 'EUR')['bid']
+            return exchange_rate * fiat_exchange_rate
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
         if coin_type == 'haven':
@@ -107,7 +141,8 @@ class Exchange:
         if coin_type_base == 'haven':
             return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps)
         else:
-            return 1
+            ticker = self.marketplace.fetch_ticker(coin_type + '/' + self.haven_coin_type)
+            return ticker['bid']
 
     # Price is a special case of price history (period = 1m, n_periods = 1)
     # Last valid value logic addresses price or price history accordingly
