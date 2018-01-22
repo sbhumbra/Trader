@@ -146,14 +146,6 @@ class Exchange:
             ticker = self.marketplace.fetch_ticker(coin_type + '/' + self.haven_coin_type)
             return ticker['bid']
 
-    # Price is a special case of price history (period = 1m, n_periods = 1)
-    # Last valid value logic addresses price or price history accordingly
-    def get_price_wip(self, coin_type):
-        # Returns [$]
-        price = self.price_history(haven_coin, '1m', 1)
-        self.last_valid_price = price
-        return price
-
     def get_price_history_wip(self, coin_type, period, n_periods):
         # gets price history
         # Returns [$]
