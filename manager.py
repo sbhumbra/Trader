@@ -184,6 +184,7 @@ class Manager:
         # Monitor orders, record in portfolio and return if all complete
         orders_completed = 0
         for i in range(1, timeout):
+            print(i)
             orders_completed = self.exchange.query_order(df_transactions_to_make)
             time.sleep(1)
             # TODO: cancel if price forecast changes?

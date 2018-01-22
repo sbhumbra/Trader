@@ -1,9 +1,8 @@
-import time
-
-import ccxt
 import numpy as np
-
 import coinstats as C
+import time
+import pandas as pd
+import ccxt
 
 
 # any of these queries can timeout error - handle gracefully
@@ -136,7 +135,7 @@ class Exchange:
         if coin_type == 'haven':
             return self.get_supply(self.haven_coin_type, timestamps)
         else:
-            pass
+            return 1
 
     def get_exchange_rate(self, coin_type, coin_type_base='haven', timestamps=np.nan):
         if coin_type_base == 'haven':

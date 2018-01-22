@@ -24,15 +24,18 @@ class Portfolio:
         # reconstruct ledger from file
         pass
 
+    def save(self, filename):
+        pass
+
     def record_transaction(self, df_transaction):
         #   Add transaction(s) to the ledger
         self.ledger = pd.concat([self.ledger, df_transaction], ignore_index=True)
 
         #   First update average pride paid (relies on past number of coins held)
-        self.update_avg_price_paid_for_coin(df_transaction)
+        #self.update_avg_price_paid_for_coin(df_transaction)
 
         #   ...now update number of coins held
-        self.update_num_coin_holding(df_transaction)
+        #self.update_num_coin_holding(df_transaction)
 
     def value_portfolio(self):
         #   Total portfolio value
