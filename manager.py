@@ -1,7 +1,9 @@
-import ccxt
 import time
+
+import ccxt
 import numpy as np
 import pandas as pd
+import scipy.io as sio
 
 import exchange as E
 import forecaster as F
@@ -12,17 +14,22 @@ class Manager:
     def __init__(self, filename_coinstats='', filename_portfolio=''):
         # Exchange abstracts conversions so these coins need not go directly to Haven (USDT)
         # coins tradeable with USDT on binance
-        self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'BCC', 'LTC', 'NEO']
+        self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
 
         # haven coin: USDT for safety
         self.haven_coin_type = 'USDT'
 
+        binance = ccxt.binance()
+        mat_file = sio.loadmat("api_things.mat")
+        binance.apiKey = mat_file['api_key']
+        binance.secret = mat_file["api_secret"]
+
         # robust wrapper for placing / querying / cancelling orders & getting prices
-        self.exchange = E.Exchange(coin_types=self.list_of_coin_types, marketplace=ccxt.binance(),
+        self.exchange = E.Exchange(coin_types=self.list_of_coin_types, marketplace=binance,
                                    haven_marketplace=ccxt.bitfinex(), buy_fee=0.01 / 100,
                                    sell_fee=0.01 / 100, haven_coin_type=self.haven_coin_type,
                                    filename_coinstats=filename_coinstats,
-                                   flag_fake_exchange=True)  # FAKE EXCHANGE -- CHANGE HERE !!
+                                   flag_fake_exchange=False)  # FAKE EXCHANGE -- CHANGE HERE !!
 
         # portfolio contains list of completed transactions
         self.portfolio = P.Portfolio(self.exchange, filename_portfolio)
@@ -59,17 +66,18 @@ class Manager:
 
         # Calc p/l in future
         # This will be NaN if liquidating
+        print("Current values are " + str(current_values).strip('[]'))
+        print("Future values are " + str(future_values).strip('[]'))
         future_profit_loss = future_values - current_values
-
         # SELL COINS
         # Selling frees up funds for buying...
         # Sell anything that's negative and over threshold and that we own
         # If liquidating, future_profit_loss will be NaN and the check below will be False for all coins
         # This is good as it stops us making trades unintentionally when liquidating
-        flag_loss_expected = (-1 * future_profit_loss >= self.threshold_sell) and (current_values > 0)
+        flag_loss_expected = np.logical_and(-1 * future_profit_loss >= self.threshold_sell, current_values > 0)
 
         # Which coins should we sell?
-        flag_sell_coin = flag_loss_expected or self.flag_liquidate_coin
+        flag_sell_coin = np.logical_or(flag_loss_expected, self.flag_liquidate_coin)
         if any(flag_sell_coin):
             id_coin_types_to_sell = coin_ids[flag_sell_coin]
             list_of_coin_types_to_sell = self.get_list_of_coin_types(id_coin_types_to_sell)
@@ -91,16 +99,20 @@ class Manager:
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
         # BUY COINS
+        print("Buying coinage...")
         # Buy anything positive that's over threshold
         # Again, the check below will be False for each coin if we're liquidating
         flag_profit_expected = future_profit_loss >= self.threshold_buy
 
         # Which coins should we buy and what will the profit be?
         # Liquidation check is explicit here although unnecessary
-        flag_buy_coin = flag_profit_expected and not any(self.flag_liquidate_coin)
+        flag_buy_coin = np.logical_and(flag_profit_expected, not any(self.flag_liquidate_coin))
         if any(flag_buy_coin):
+
             id_coin_types_to_buy = coin_ids[flag_buy_coin]
             future_profit = future_profit_loss[flag_buy_coin]
+
+            print("Buying" + id_coin_types_to_buy + " for expected " + future_profit + " moneys")
 
             # Order coins from most profit to least profit
             # This sorts in ascending (not optional), therefore -1 for descending

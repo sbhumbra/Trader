@@ -13,7 +13,7 @@ class Forecaster:
         last_price = self.exchange.get_price(coin_type,now - 10*60)
         dprice_dt = (current_price - last_price)/(10*60)
         future_price = current_price + dprice_dt * dt
-        pass
+        return future_price
 
     def validate(self, coin):
         # call with past timestamps to verify algorithm goodness
