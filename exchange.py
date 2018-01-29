@@ -126,24 +126,54 @@ class Exchange:
         elif coin_type == 'EUR':
             return 1
         else:
-            exchange_rate = self.get_exchange_rate(coin_type, timestamps)
-            if self.haven_coin_type == 'USDT':
-                fiat_exchange_rate = 0.81
-            else:
-                fiat_exchange_rate = self.haven_marketplace.fetch_ticker(self.haven_coin_type + '/' + 'EUR')['bid']
-            return exchange_rate * fiat_exchange_rate
+            flag_query_now = np.isnan(timestamps)
+            try:
+                exchange_rate = self.get_exchange_rate(coin_type, timestamps)
+                if self.haven_coin_type == 'USDT':
+                    fiat_exchange_rate = 0.81
+                else:
+                    fiat_exchange_rate = self.haven_marketplace.fetch_ticker(self.haven_coin_type + '/' + 'EUR')['bid']
+                price = exchange_rate * fiat_exchange_rate
+                if flag_query_now:
+                    self.coinstats.set_last_valid_supply(coin_type, price, int(time.time()))
+                else:
+                    self.coinstats.set_last_valid_supply(coin_type, price, timestamps)
+            except:
+                [last_valid_price, last_valid_timestamp] = self.coinstats.get_last_valid_price(coin_type)
+                if flag_query_now:
+                    query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
+                    flag_query_valid = query_time_delta <= self.price_time_query_tolerance
+                else:
+                    query_time_delta = np.abs(last_valid_timestamp - timestamps)
+                    flag_query_valid = all(query_time_delta <= self.price_time_query_tolerance)
+
+                if flag_query_valid:
+                    price = last_valid_price
+                else:
+                    price = np.nan
+        return price
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
         if coin_type == 'haven':
             return self.get_supply(self.haven_coin_type, timestamps)
         else:
+            flag_query_now = np.isnan(timestamps)
             try:
                 ticker = ccxt.coinmarketcap().fetch_ticker(coin_type + '/USD')
                 supply = ticker['info']['available_supply']
-                self.coinstats.set_last_valid_supply(coin_type, supply, int(time.time()))
+                if flag_query_now:
+                    self.coinstats.set_last_valid_supply(coin_type, supply, int(time.time()))
+                else:
+                    self.coinstats.set_last_valid_supply(coin_type, supply, timestamps)
             except:
                 [last_valid_supply, last_valid_timestamp] = self.coinstats.get_last_valid_supply(coin_type)
-                if np.abs(last_valid_timestamp - timestamps) <= self.supply_time_query_tolerance:
+                if flag_query_now:
+                    query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
+                    flag_query_valid = query_time_delta <= self.supply_time_query_tolerance
+                else:
+                    query_time_delta = np.abs(last_valid_timestamp - timestamps)
+                    flag_query_valid = all(query_time_delta <= self.supply_time_query_tolerance)
+                if flag_query_valid:
                     supply = last_valid_supply
                 else:
                     supply = np.nan
