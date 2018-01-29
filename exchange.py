@@ -128,7 +128,7 @@ class Exchange:
         else:
             exchange_rate = self.get_exchange_rate(coin_type, timestamps)
             if self.haven_coin_type == 'USDT':
-                fiat_exchange_rate = 1
+                fiat_exchange_rate = 0.81
             else:
                 fiat_exchange_rate = self.haven_marketplace.fetch_ticker(self.haven_coin_type + '/' + 'EUR')['bid']
             return exchange_rate * fiat_exchange_rate
@@ -137,7 +137,17 @@ class Exchange:
         if coin_type == 'haven':
             return self.get_supply(self.haven_coin_type, timestamps)
         else:
-            return 1
+            try:
+                ticker = ccxt.coinmarketcap().fetch_ticker(coin_type + '/USD')
+                supply = ticker['info']['available_supply']
+                self.coinstats.set_last_valid_supply(coin_type, supply, int(time.time()))
+            except:
+                [last_valid_supply, last_valid_timestamp] = self.coinstats.get_last_valid_supply(coin_type)
+                if np.abs(last_valid_timestamp - timestamps) <= self.supply_time_query_tolerance:
+                    supply = last_valid_supply
+                else:
+                    supply = np.nan
+        return supply
 
     def get_exchange_rate(self, coin_type, coin_type_base='haven', timestamps=np.nan):
         if coin_type_base == 'haven':
@@ -186,21 +196,3 @@ class Exchange:
                 return self.last_valid_price
             else:
                 return self.last_valid_price_history
-
-    def get_supply_wip(self, coin_type):
-        # gets supply - will have to query coinmarketcap for this one
-        # only coinmarketcap has the total supply
-        try:
-            ticker = ccxt.coinmarketcap().fetch_ticker(coin_type + '/USD')
-            supply = ticker['info']['available_supply']
-            self.coinstats.set_last_valid_supply(coin_type, supply)
-        except:
-            supply = self.coinstats.get_last_valid_supply(coin_type)
-
-        return supply
-
-    def get_exchange_rate_wip(self, coin_type, coin_type_base):
-        pass
-
-    def get_exchange_rate_history_wip(sel, coin_type, coin_type_base):
-        pass
