@@ -94,7 +94,7 @@ class Exchange:
                     order = self.marketplace.fetch_order(df_transaction.at[idx, 'transaction_id'])
                     if order['status'] == 'closed':
                         df_transaction.at[idx, 'num_coin_bought'] = order['amount']
-                        df_transaction.at[idx, 'time_completed'] = order['timestamp']
+                        df_transaction.at[idx, 'time_completed'] = int(order['timestamp'] / 1000)
                         flag_all_orders_completed[idx] = True
 
         return all(flag_all_orders_completed)
@@ -128,16 +128,16 @@ class Exchange:
         else:
             flag_query_now = np.isnan(timestamps)
             try:
-                exchange_rate = self.get_exchange_rate(coin_type, timestamps)
+                exchange_rate = self.get_exchange_rate(coin_type=coin_type, timestamps=timestamps)
                 if self.haven_coin_type == 'USDT':
                     fiat_exchange_rate = 0.81
                 else:
-                    fiat_exchange_rate = self.haven_marketplace.fetch_ticker(self.haven_coin_type + '/' + 'EUR')['bid']
+                    fiat_exchange_rate = self.get_exchange_rate(timestamps=timestamps) # shortcut for haven
                 price = exchange_rate * fiat_exchange_rate
                 if flag_query_now:
                     self.coinstats.set_last_valid_supply(coin_type, price, int(time.time()))
                 else:
-                    self.coinstats.set_last_valid_supply(coin_type, price, timestamps)
+                    self.coinstats.set_last_valid_supply(coin_type, price, int(timestamps / 1000))
             except:
                 [last_valid_price, last_valid_timestamp] = self.coinstats.get_last_valid_price(coin_type)
                 if flag_query_now:
@@ -164,7 +164,7 @@ class Exchange:
                 if flag_query_now:
                     self.coinstats.set_last_valid_supply(coin_type, supply, int(time.time()))
                 else:
-                    self.coinstats.set_last_valid_supply(coin_type, supply, timestamps)
+                    self.coinstats.set_last_valid_supply(coin_type, supply, int(timestamps / 1000))
             except:
                 [last_valid_supply, last_valid_timestamp] = self.coinstats.get_last_valid_supply(coin_type)
                 if flag_query_now:
@@ -179,50 +179,23 @@ class Exchange:
                     supply = np.nan
         return supply
 
-    def get_exchange_rate(self, coin_type, coin_type_base='haven', timestamps=np.nan):
-        if coin_type_base == 'haven':
-            return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps)
+    def get_exchange_rate(self, coin_type='haven', coin_type_base='haven', timestamps=np.nan, marketplace=np.nan):
+        if (coin_type == 'haven') or (coin_type == self.haven_coin_type):
+            return self.get_exchange_rate(self.haven_coin_type, 'EUR', timestamps, self.haven_marketplace)
+        elif coin_type_base == 'haven':
+            return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps, self.marketplace)
         else:
-            ticker = self.marketplace.fetch_ticker(coin_type + '/' + self.haven_coin_type)
-            return ticker['bid']
+            coin_pair = coin_type + '/' + coin_type_base
+            if np.isnan(marketplace):
+                marketplace = self.marketplace
 
-    def get_price_history_wip(self, coin_type, period, n_periods):
-        # gets price history
-        # Returns [$]
-        BIsHaven = (self.name == haven_coin.name)
-        BIsSinglePrice = (period == '1m') and (n_periods == 1)
-
-        # Get Haven Price History [$/Haven]
-        if BIsHaven:
-            # Price fetched from exchange will already be USD, therefore conversion factor is 1
-            haven_to_usd = 1
-        elif BIsSinglePrice:
-            haven_to_usd = haven_coin.last_valid_price
-        else:
-            haven_to_usd = haven_coin.last_valid_price_history
-
-        # Get Price History [Haven/Coin], for a given exchange
-        if BIsHaven:
-            coin_pair = haven_coin.name + '/USD'
-        else:
-            coin_pair = self.name + '/' + haven_coin.name
-
-        try:
-            # Get OHLCV in Haven per Coin
-            # Last element is most recent (??)
-            all_OHLCV = self.exchange.fetch_ohlcv(coin_pair, period)
-            # Get V (closing value), still in Haven per Coin
-            selected_OHLCV = np.asarray(all_OHLCV[-n_periods:], 'float')
-            # Price [$] = Haven x Haven Price, elementwise
-            price_history = np.multiply(selected_OHLCV[:, -2], haven_to_usd)
-            # Store Price history if not single value
-            if BIsSinglePrice:
-                price_history = np.asscalar(price_history)
+            if np.isnan(timestamps):
+                # get last exchange rate
+                query_time = int((int(time.time()) - 60 * 1) * 1000)
             else:
-                self.last_valid_price_history = price_history
-            return price_history
-        except:
-            if BIsSinglePrice:
-                return self.last_valid_price
-            else:
-                return self.last_valid_price_history
+                query_time = int(timestamps * 1000)
+
+            candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
+            exchange_rate = candles[0][4]
+
+            return exchange_rate

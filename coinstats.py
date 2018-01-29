@@ -17,6 +17,7 @@ class CoinStats:
                 # last valid price 60 min buffer
                 # last valid price 60 hour buffer
                 # last valid price 60 day buffer
+                # t = c.fetch_ohlcv('NEO/USDT','1m',int(time.time())*1000-60*10*1000)
                 # stored min/max values (can update realtime)
                 # others??
 
