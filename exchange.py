@@ -52,17 +52,16 @@ class Exchange:
             num_transactions = len(df_transaction.index)
             if np.isnan(price):
                 for idx in range(0, num_transactions):
-                    to_buy = df_transaction.at[idx, 'coin_type_bought']
-                    to_sell = df_transaction.at[idx, 'coin_type_sold']
+                    [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
                     amount_to_sell = df_transaction.at[idx, 'num_coin_sold']
-                    print('Buying' + to_buy + 'for' + amount_to_sell + ' ' + to_sell)
+                    print('Buying ' + to_buy + ' for ' + str(amount_to_sell) + ' ' + to_sell)
                     if to_buy == self.haven_coin_type:
                         out = self.marketplace.create_market_sell_order(
-                            to_sell + '/' + to_buy,
+                            coin_pair,
                             amount_to_sell)
                     else:
                         out = self.marketplace.create_market_buy_order(
-                            to_buy + '/' + to_sell,
+                            coin_pair,
                             amount_to_sell)
                     df_transaction.at[idx, 'transaction_id'] = out['id']
             else:
@@ -91,7 +90,9 @@ class Exchange:
         else:
             for idx in range(0, num_transactions):
                 if not flag_all_orders_completed[idx]:
-                    order = self.marketplace.fetch_order(df_transaction.at[idx, 'transaction_id'])
+                    [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
+                    transaction_id = df_transaction.at[idx, 'transaction_id']
+                    order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
                     if order['status'] == 'closed':
                         df_transaction.at[idx, 'num_coin_bought'] = order['amount']
                         df_transaction.at[idx, 'time_completed'] = int(order['timestamp'] / 1000)
@@ -113,9 +114,11 @@ class Exchange:
             id_transactions_to_cancel = []
             num_transactions = len(df_transaction.index)
             for idx in range(0, num_transactions):
-                order = self.marketplace.fetch_order(df_transaction.at[idx, 'transaction_id'])
+                [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
+                transaction_id = df_transaction.at[idx, 'transaction_id']
+                order = self.marketplace.fetch_order(transaction_id,symbol=coin_pair)
                 if order['status'] == 'open':
-                    self.marketplace.cancel_order(df_transaction.at[idx, 'transaction_id'])
+                    self.marketplace.cancel_order(transaction_id,symbol=coin_pair)
                     id_transactions_to_cancel.append(idx)
 
             df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
@@ -129,28 +132,33 @@ class Exchange:
             flag_query_now = np.isnan(timestamps)
             try:
                 exchange_rate = self.get_exchange_rate(coin_type=coin_type, timestamps=timestamps)
+                print(exchange_rate)
                 if self.haven_coin_type == 'USDT':
                     fiat_exchange_rate = 0.81
                 else:
-                    fiat_exchange_rate = self.get_exchange_rate(timestamps=timestamps) # shortcut for haven
+                    fiat_exchange_rate = self.get_exchange_rate(timestamps=timestamps)  # shortcut for haven
+                print(fiat_exchange_rate)
                 price = exchange_rate * fiat_exchange_rate
+                print(price)
                 if flag_query_now:
                     self.coinstats.set_last_valid_supply(coin_type, price, int(time.time()))
                 else:
                     self.coinstats.set_last_valid_supply(coin_type, price, int(timestamps / 1000))
             except:
+                print('ERROR: PRICE')
                 [last_valid_price, last_valid_timestamp] = self.coinstats.get_last_valid_price(coin_type)
                 if flag_query_now:
                     query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
                     flag_query_valid = query_time_delta <= self.price_time_query_tolerance
                 else:
                     query_time_delta = np.abs(last_valid_timestamp - timestamps)
-                    flag_query_valid = all(query_time_delta <= self.price_time_query_tolerance)
+                    flag_query_valid = np.all(np.less_equal(query_time_delta, self.price_time_query_tolerance))
 
                 if flag_query_valid:
                     price = last_valid_price
                 else:
                     price = np.nan
+
         return price
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
@@ -166,27 +174,29 @@ class Exchange:
                 else:
                     self.coinstats.set_last_valid_supply(coin_type, supply, int(timestamps / 1000))
             except:
+                print('ERROR: SUPPLY')
                 [last_valid_supply, last_valid_timestamp] = self.coinstats.get_last_valid_supply(coin_type)
                 if flag_query_now:
                     query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
                     flag_query_valid = query_time_delta <= self.supply_time_query_tolerance
                 else:
                     query_time_delta = np.abs(last_valid_timestamp - timestamps)
-                    flag_query_valid = all(query_time_delta <= self.supply_time_query_tolerance)
+                    flag_query_valid = np.all(np.less_equal(query_time_delta, self.supply_time_query_tolerance))
                 if flag_query_valid:
                     supply = last_valid_supply
                 else:
                     supply = np.nan
         return supply
 
-    def get_exchange_rate(self, coin_type='haven', coin_type_base='haven', timestamps=np.nan, marketplace=np.nan):
+    def get_exchange_rate(self, coin_type='haven', coin_type_base='haven', timestamps=np.nan, marketplace=None):
         if (coin_type == 'haven') or (coin_type == self.haven_coin_type):
             return self.get_exchange_rate(self.haven_coin_type, 'EUR', timestamps, self.haven_marketplace)
         elif coin_type_base == 'haven':
             return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps, self.marketplace)
         else:
             coin_pair = coin_type + '/' + coin_type_base
-            if np.isnan(marketplace):
+            print('Getting exchange rate: ' + coin_pair)
+            if not marketplace:
                 marketplace = self.marketplace
 
             if np.isnan(timestamps):
@@ -199,3 +209,12 @@ class Exchange:
             exchange_rate = candles[0][4]
 
             return exchange_rate
+
+    def get_coin_pair(self, df_transaction, idx):
+        to_buy = df_transaction.at[idx, 'coin_type_bought']
+        to_sell = df_transaction.at[idx, 'coin_type_sold']
+        if to_buy == self.haven_coin_type:
+            coin_pair = to_sell + '/' + to_buy
+        else:
+            coin_pair = to_buy + '/' + to_sell
+        return [to_buy, to_sell, coin_pair]

@@ -21,8 +21,8 @@ class Manager:
 
         binance = ccxt.binance()
         mat_file = sio.loadmat("api_things.mat")
-        binance.apiKey = mat_file['api_key']
-        binance.secret = mat_file["api_secret"]
+        binance.apiKey = mat_file['api_key'][0]
+        binance.secret = mat_file["api_secret"][0]
 
         # robust wrapper for placing / querying / cancelling orders & getting prices
         self.exchange = E.Exchange(coin_types=self.list_of_coin_types, marketplace=binance,
@@ -38,8 +38,8 @@ class Manager:
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy = 5  # euros
-        self.threshold_sell = 5  # euros
+        self.threshold_buy = 0.1  # euros
+        self.threshold_sell = 0 # euros
         self.buy_value = 5  # euros
 
         # liquidation flag
@@ -49,7 +49,7 @@ class Manager:
     def trade(self):
         # get current timestamp and get future timestamp for prediction
         now = int(time.time())
-        future_time = now + 60 * 10
+        future_time = now + 60 * 60
 
         # instantiate containers for current / future values
         num_coin_types = len(self.list_of_coin_types)
