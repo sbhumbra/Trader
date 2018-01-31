@@ -38,6 +38,8 @@ class Exchange:
         #   Tolerances (in seconds) within which the exchange will return the last valid value if a query fails
         self.price_time_query_tolerance = 1
         self.supply_time_query_tolerance = 60
+        self.num_price_query_tolerance = 5
+        self.num_supply_query_tolerance = 6
         # self.exchange_rate_time_query_tolerance = 1 # not stored yet..
 
     def place_order(self, df_transaction, price=np.nan):
@@ -116,9 +118,9 @@ class Exchange:
             for idx in range(0, num_transactions):
                 [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
                 transaction_id = df_transaction.at[idx, 'transaction_id']
-                order = self.marketplace.fetch_order(transaction_id,symbol=coin_pair)
+                order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
                 if order['status'] == 'open':
-                    self.marketplace.cancel_order(transaction_id,symbol=coin_pair)
+                    self.marketplace.cancel_order(transaction_id, symbol=coin_pair)
                     id_transactions_to_cancel.append(idx)
 
             df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
@@ -130,38 +132,43 @@ class Exchange:
             return 1
         else:
             flag_query_now = np.isnan(timestamps)
+
+        flag_complete = False
+        num_attempts = 0
+        local_timestamps = timestamps
+        while not flag_complete:
             try:
-                exchange_rate = self.get_exchange_rate(coin_type=coin_type, timestamps=timestamps)
-                print(exchange_rate)
+                if not np.isnan(local_timestamps):
+                    local_timestamps -= num_attempts * 60
+
+                exchange_rate = self.get_exchange_rate(coin_type=coin_type, timestamps=local_timestamps)
+                print('Exchange rate: ' + str(exchange_rate))
                 if self.haven_coin_type == 'USDT':
                     fiat_exchange_rate = 0.81
                 else:
-                    fiat_exchange_rate = self.get_exchange_rate(timestamps=timestamps)  # shortcut for haven
-                print(fiat_exchange_rate)
+                    fiat_exchange_rate = self.get_exchange_rate(coin_type=self.haven_coin_type, coin_type_base='EUR',
+                                                                timestamps=local_timestamps)  # shortcut for haven
                 price = exchange_rate * fiat_exchange_rate
-                print(price)
+                print('Price: ' + str(price))
                 if flag_query_now:
-                    self.coinstats.set_last_valid_supply(coin_type, price, int(time.time()))
+                    self.coinstats.set_last_valid_price(coin_type, price, int(time.time()))
                 else:
-                    self.coinstats.set_last_valid_supply(coin_type, price, int(timestamps / 1000))
+                    self.coinstats.set_last_valid_price(coin_type, price, int(local_timestamps / 1000))
+
+                flag_complete = True
+                return price
             except:
-                print('ERROR: PRICE')
-                [last_valid_price, last_valid_timestamp] = self.coinstats.get_last_valid_price(coin_type)
-                if flag_query_now:
-                    query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
-                    flag_query_valid = query_time_delta <= self.price_time_query_tolerance
-                else:
-                    query_time_delta = np.abs(last_valid_timestamp - timestamps)
-                    flag_query_valid = np.all(np.less_equal(query_time_delta, self.price_time_query_tolerance))
+                num_attempts += 1
+                if num_attempts == self.num_price_query_tolerance:
+                    raise
 
-                if flag_query_valid:
-                    price = last_valid_price
-                else:
-                    price = np.nan
-
-        return price
+                print('Uj-ohJ!!!')
+                print(timestamps)
+                print(local_timestamps)
+                time.sleep(5)
 
     def get_supply(self, coin_type='haven', timestamps=np.nan):
+        # need to fix this
         if coin_type == 'haven':
             return self.get_supply(self.haven_coin_type, timestamps)
         else:
@@ -189,8 +196,10 @@ class Exchange:
         return supply
 
     def get_exchange_rate(self, coin_type='haven', coin_type_base='haven', timestamps=np.nan, marketplace=None):
-        if (coin_type == 'haven') or (coin_type == self.haven_coin_type):
-            return self.get_exchange_rate(self.haven_coin_type, 'EUR', timestamps, self.haven_marketplace)
+        if coin_type == coin_type_base:
+            return 1
+        elif coin_type == 'haven':
+            return self.get_exchange_rate(self.haven_coin_type, 'USD', timestamps, self.haven_marketplace)
         elif coin_type_base == 'haven':
             return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps, self.marketplace)
         else:
