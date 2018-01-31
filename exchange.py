@@ -1,77 +1,54 @@
 import numpy as np
-import coinstats as C
 import time
 import pandas as pd
 import ccxt
 
 
-# any of these queries can timeout error - handle gracefully
-# some exchanges are back to front too - handle here
-
 class Exchange:
-    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0.1 / 100,
-                 sell_fee=0,
-                 haven_coin_type='USDT',
-                 filename_coinstats='', flag_fake_exchange=False):
+    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(),
+                 haven_coin_type='USDT'):
+
+        self.df_transaction_format = {'transaction_id': [], 'coin_pair': [], 'transaction_amount': [],
+                                      'transaction_type': []}
 
         #   Get coin-coin exchange rates from this marketplace (e.g. binance)
         self.marketplace = marketplace
 
-        #   Transaction fees on coin-coin marketplace
-        #   These are fraction i.e. buy_price = (1 + buy_fee)*quoted_buy_price
-        #                           sell_price = (1 - sell_fee)*quoted_sell_price
-        self.buy_fee = buy_fee
-        self.sell_fee = sell_fee
-
-        #   Get haven-FIAT exchange rate from this marketplace (e.g. bitfinex)
+        #   Get haven-dollar exchange rate from this marketplace (e.g. bitfinex)
         self.haven_marketplace = haven_marketplace
         self.haven_coin_type = haven_coin_type
 
-        #   Create repository for past data and methods for querying it
-        #   e.g. last valid price / max / min / average in window / variance in window / etc.
-        all_coin_types = coin_types.copy()
-        all_coin_types.append(haven_coin_type)
-        self.coinstats = C.CoinStats(all_coin_types, filename_coinstats)
+        #   Sad Luca
+        self.dollar_to_euro = 0.81
 
-        #   If TRUE, place/query/sell order functions won't actually use the exchange order API
-        self.flag_fake_exchange = flag_fake_exchange
+        #   If the exchange doesn't return a price, we wait and query again this many times before giving up.
+        #   Every query attempt, we iterate backwards in time to have more chance of getting a price
+        self.num_exchange_query_tolerance = 5
 
-        #   Tolerances (in seconds) within which the exchange will return the last valid value if a query fails
-        self.price_time_query_tolerance = 1
-        self.supply_time_query_tolerance = 60
-        self.num_price_query_tolerance = 5
-        self.num_supply_query_tolerance = 6
-        # self.exchange_rate_time_query_tolerance = 1 # not stored yet..
+        # trades = binance.fetch_my_trades('BTC/USDT') - get transaction
+        # markets = binance.fetch_markets() - get coin types
 
     def place_order(self, df_transaction, price=np.nan):
-        # place order, then update transaction_id.  num_coin_bought and time_completed will still be empty
+        # place order, then update transaction_id.
+        # num_coin_bought and time_completed will still be empty
         # price to be used if we don't want market rate and instead want to place a limit order
-        if self.flag_fake_exchange:
-            # Assign all NaN transaction IDs a value
-            num_transactions = len(df_transaction.index)
+        num_transactions = len(df_transaction.index)
+        if np.isnan(price):
             for idx in range(0, num_transactions):
-                df_transaction.at[idx, 'transaction_id'] = idx
+                coin_pair = df_transaction.at[idx, 'coin_pair']
+                flag_sell = df_transaction.at[idx, 'transaction_type'] == 'sell'
+                amount = df_transaction.at[idx, 'transaction_amount']
+                if flag_sell:
+                    print('Pair: ' + coin_pair + ' ; Selling: ' + str(amount))
+                    out = self.marketplace.create_market_sell_order(coin_pair, amount)
+                else:
+                    print('Pair: ' + coin_pair + ' ; Buying: ' + str(amount))
+                    out = self.marketplace.create_market_buy_order(coin_pair, amount)
+                df_transaction.at[idx, 'transaction_id'] = out['id']
+
+            print('')
         else:
-            num_transactions = len(df_transaction.index)
-            if np.isnan(price):
-                for idx in range(0, num_transactions):
-                    [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
-                    flag_sale = to_buy == self.haven_coin_type
-                    if flag_sale:
-                        amount = df_transaction.at[idx, 'num_coin_sold']
-                        print('Selling ' + str(amount) + ' ' + to_sell + ' for ' + to_buy)
-                        out = self.marketplace.create_market_sell_order(
-                            coin_pair,
-                            amount)
-                    else:
-                        amount = df_transaction.at[idx, 'num_coin_bought']
-                        print('Buying ' + str(amount) + to_buy + ' with ' + ' ' + to_sell)
-                        out = self.marketplace.create_market_buy_order(
-                            coin_pair,
-                            amount)
-                    df_transaction.at[idx, 'transaction_id'] = out['id']
-            else:
-                raise Exception("Limit orders unsupported")
+            raise Exception("Limit orders unsupported")
 
     def query_order(self, df_transaction):
         # This time we must have the id - it checks the status of the transaction on the marketplace.
@@ -83,151 +60,107 @@ class Exchange:
         # Return True/False if ALL orders completed
         num_transactions = len(df_transaction.index)
         flag_all_orders_completed = np.full(num_transactions, False)
-        if self.flag_fake_exchange:
-            for idx in range(0, num_transactions):
-                if not flag_all_orders_completed[idx]:
-                    coin_sell_price = (1 - self.sell_fee) * self.get_price(df_transaction.at[idx, 'coin_type_sold'])
-                    coin_buy_price = (1 + self.buy_fee) * self.get_price(df_transaction.at[idx, 'coin_type_bought'])
-                    exchange_rate = coin_sell_price / coin_buy_price  # ($/H) / ($/B) -> B/H
-                    num_coin_bought = exchange_rate * df_transaction.at[idx, 'num_coin_sold']
-                    df_transaction.at[idx, 'num_coin_bought'] = num_coin_bought
-                    df_transaction.at[idx, 'time_completed'] = int(time.time())
-                    flag_all_orders_completed[idx] = True
-        else:
-            for idx in range(0, num_transactions):
-                if not flag_all_orders_completed[idx]:
-                    [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
-                    transaction_id = df_transaction.at[idx, 'transaction_id']
-                    order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
-                    if order['status'] == 'closed':
-                        df_transaction.at[idx, 'num_coin_bought'] = order['amount'] * (1 - self.buy_fee)
-                        df_transaction.at[idx, 'time_completed'] = int(order['timestamp'] / 1000)
-                        flag_all_orders_completed[idx] = True
 
+        for idx in range(0, num_transactions):
+            if not flag_all_orders_completed[idx]:
+                coin_pair = df_transaction.at[idx, 'coin_pair']
+                transaction_id = df_transaction.at[idx, 'transaction_id']
+                order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
+                if order['status'] == 'closed':
+                    flag_all_orders_completed[idx] = True
         return all(flag_all_orders_completed)
 
     def cancel_order(self, df_transaction):
         # cancel incomplete orders
-        if self.flag_fake_exchange:
-            id_transactions_to_cancel = []
-            num_transactions = len(df_transaction.index)
-            for idx in range(0, num_transactions):
-                if np.isnan(df_transaction.at[idx, 'time_completed']):
-                    id_transactions_to_cancel.append(idx)
+        id_transactions_to_cancel = []
+        num_transactions = len(df_transaction.index)
+        for idx in range(0, num_transactions):
+            coin_pair = df_transaction.at[idx, 'coin_pair']
+            transaction_id = df_transaction.at[idx, 'transaction_id']
+            order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
+            if order['status'] == 'open':
+                self.marketplace.cancel_order(transaction_id, symbol=coin_pair)
+                id_transactions_to_cancel.append(idx)
 
-            df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
-        else:
-            id_transactions_to_cancel = []
-            num_transactions = len(df_transaction.index)
-            for idx in range(0, num_transactions):
-                [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
-                transaction_id = df_transaction.at[idx, 'transaction_id']
-                order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
-                if order['status'] == 'open':
-                    self.marketplace.cancel_order(transaction_id, symbol=coin_pair)
-                    id_transactions_to_cancel.append(idx)
+        df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
 
-            df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
-
-    def get_price(self, coin_type='haven', timestamps=np.nan):
+    def get_price(self, timestamp, coin_type='haven'):
+        # time mandatory and in seconds
         if coin_type == 'haven':
-            return self.get_price(self.haven_coin_type, timestamps)
+            return self.get_price(timestamp, self.haven_coin_type)
         elif coin_type == 'EUR':
             return 1
+
+        print('Getting price at time: ' + str(timestamp))
+        exchange_rate = self.get_exchange_rate(timestamp, coin_type=coin_type)
+        if self.haven_coin_type == 'USDT':
+            fiat_exchange_rate = self.dollar_to_euro
         else:
-            flag_query_now = np.isnan(timestamps)
+            fiat_exchange_rate = self.dollar_to_euro * self.get_exchange_rate(timestamp,
+                                                                              coin_type=self.haven_coin_type,
+                                                                              coin_type_base='USD')  # shortcut for haven
+        price = exchange_rate * fiat_exchange_rate
+        print('Price: ' + str(price))
+        print('')
+        return price
 
-        flag_complete = False
-        num_attempts = 0
-        local_timestamps = timestamps
-        while not flag_complete:
-            try:
-                if not np.isnan(local_timestamps):
-                    local_timestamps -= num_attempts * 60
-
-                exchange_rate = self.get_exchange_rate(coin_type=coin_type, timestamps=local_timestamps)
-                print('Exchange rate: ' + str(exchange_rate))
-                if self.haven_coin_type == 'USDT':
-                    fiat_exchange_rate = 0.81
-                else:
-                    fiat_exchange_rate = self.get_exchange_rate(coin_type=self.haven_coin_type, coin_type_base='EUR',
-                                                                timestamps=local_timestamps)  # shortcut for haven
-                price = exchange_rate * fiat_exchange_rate
-                print('Price: ' + str(price))
-                if flag_query_now:
-                    self.coinstats.set_last_valid_price(coin_type, price, int(time.time()))
-                else:
-                    self.coinstats.set_last_valid_price(coin_type, price, int(local_timestamps / 1000))
-
-                flag_complete = True
-                return price
-            except:
-                num_attempts += 1
-                if num_attempts == self.num_price_query_tolerance:
-                    raise
-
-                print('Uj-ohJ!!!')
-                print(timestamps)
-                print(local_timestamps)
-                time.sleep(5)
-
-    def get_supply(self, coin_type='haven', timestamps=np.nan):
-        # need to fix this
-        if coin_type == 'haven':
-            return self.get_supply(self.haven_coin_type, timestamps)
-        else:
-            flag_query_now = np.isnan(timestamps)
-            try:
-                ticker = ccxt.coinmarketcap().fetch_ticker(coin_type + '/USD')
-                supply = ticker['info']['available_supply']
-                if flag_query_now:
-                    self.coinstats.set_last_valid_supply(coin_type, supply, int(time.time()))
-                else:
-                    self.coinstats.set_last_valid_supply(coin_type, supply, int(timestamps / 1000))
-            except:
-                print('ERROR: SUPPLY')
-                [last_valid_supply, last_valid_timestamp] = self.coinstats.get_last_valid_supply(coin_type)
-                if flag_query_now:
-                    query_time_delta = np.abs(last_valid_timestamp - int(time.time()))
-                    flag_query_valid = query_time_delta <= self.supply_time_query_tolerance
-                else:
-                    query_time_delta = np.abs(last_valid_timestamp - timestamps)
-                    flag_query_valid = np.all(np.less_equal(query_time_delta, self.supply_time_query_tolerance))
-                if flag_query_valid:
-                    supply = last_valid_supply
-                else:
-                    supply = np.nan
-        return supply
-
-    def get_exchange_rate(self, coin_type='haven', coin_type_base='haven', timestamps=np.nan, marketplace=None):
+    def get_exchange_rate(self, timestamp, coin_type='haven', coin_type_base='haven', marketplace=None):
+        coin_pair = coin_type + '/' + coin_type_base
         if coin_type == coin_type_base:
+            if not coin_type == self.haven_coin_type:
+                print('WARNING: Check exchange rate? Pair: ' + coin_pair)
             return 1
         elif coin_type == 'haven':
-            return self.get_exchange_rate(self.haven_coin_type, 'USD', timestamps, self.haven_marketplace)
+            return self.get_exchange_rate(timestamp, self.haven_coin_type, 'USD', self.haven_marketplace)
         elif coin_type_base == 'haven':
-            return self.get_exchange_rate(coin_type, self.haven_coin_type, timestamps, self.marketplace)
+            return self.get_exchange_rate(timestamp, coin_type, self.haven_coin_type, self.marketplace)
         else:
-            coin_pair = coin_type + '/' + coin_type_base
             print('Getting exchange rate: ' + coin_pair)
             if not marketplace:
                 marketplace = self.marketplace
 
-            if np.isnan(timestamps):
-                # get last exchange rate
-                query_time = int((int(time.time()) - 60 * 1) * 1000)
-            else:
-                query_time = int(timestamps * 1000)
+            flag_complete = False
+            query_offset = 1  # minut3
 
-            candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
-            exchange_rate = candles[0][4]
+            while not flag_complete:
+                try:
+                    # Make sure we go a minute in the past to get a value
+                    query_time = int(timestamp - (60 * query_offset)) * 1000
 
-            return exchange_rate
+                    candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
+                    exchange_rate = candles[0][4]
 
-    def get_coin_pair(self, df_transaction, idx):
-        to_buy = df_transaction.at[idx, 'coin_type_bought']
-        to_sell = df_transaction.at[idx, 'coin_type_sold']
-        if to_buy == self.haven_coin_type:
-            coin_pair = to_sell + '/' + to_buy
-        else:
-            coin_pair = to_buy + '/' + to_sell
-        return [to_buy, to_sell, coin_pair]
+                    flag_complete = True
+                    print('Exchange rate: ' + str(exchange_rate))
+                    return exchange_rate
+                except:
+                    if query_offset == self.num_exchange_query_tolerance:
+                        print('ERROR: max exchange query attempts reached!!!')
+                        raise
+                    query_offset += 1
+                    print('WARNING: exchange query failed, re-attempting')
+                    print('Getting price ' + str(query_offset) + ' minutes earlier')
+                    time.sleep(2)
+
+    def value_coin_holding(self, coin_type):
+        now = int(time.time())
+        num_coins = self.num_coin_holding(coin_type)
+        price_per_coin = self.get_price(now, coin_type)
+        return num_coins * price_per_coin
+
+    def num_coin_holding(self, coin_type):
+        num_attempts = 0
+        while num_attempts < self.num_exchange_query_tolerance:
+            try:
+                balance = self.marketplace.fetch_balance()
+                return balance[coin_type]['free']
+            except:
+                num_attempts += 1
+
+        print('ERROR: num_coin_holding ; unable to get value from exchange')
+        return 0
+
+    def get_liquid_funds(self):
+        total_liquid_funds = self.value_coin_holding(self.haven_coin_type)
+        print('Total liquid funds (Haven/EUR): ' + str(total_liquid_funds))
+        return total_liquid_funds

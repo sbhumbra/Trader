@@ -6,19 +6,24 @@ class Forecaster:
         self.exchange = exchange
 
     def forecast(self, coin_type, timestamp):
-        # timestamp (in future: vector of timestamps)
-        time_backwards = 30*60
+        # What is the current time?
         now = int(time.time())
+
+        # Get current price
+        current_price = self.exchange.get_price(now, coin_type)
+
+        # How far backwards in time do we go?
+        time_backwards = 30 * 60
+
+        # Get previous time
         dt = int(timestamp) - now
-        current_price = self.exchange.get_price(coin_type)
-        last_price = self.exchange.get_price(coin_type,now - time_backwards)
-        dprice_dt = (current_price - last_price)/(time_backwards)
+
+        # Get previous price
+        last_price = self.exchange.get_price(now - time_backwards, coin_type)
+
+        # Get price derivative
+        dprice_dt = (current_price - last_price) / time_backwards
+
+        # Linear extrapolation to get future price
         future_price = current_price + dprice_dt * dt
         return future_price
-
-    def validate(self, coin):
-        # call with past timestamps to verify algorithm goodness
-        # random sample timestamps
-        # do forecast
-        # check
-        return True
