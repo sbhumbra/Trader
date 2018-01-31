@@ -61,7 +61,7 @@ class Manager:
         # If not liquidating, loop through all coins and calc current / future values
         if not any(self.flag_liquidate_coin):
             for idx, coin_type in enumerate(self.list_of_coin_types):
-                future_prices[idx] = self.forecaster.forecast(coin_type,future_time)
+                future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
                 current_prices[idx] = self.exchange.get_price(coin_type)
                 num_coins_held[idx] = self.portfolio.num_coin_holding(coin_type)
 
@@ -69,7 +69,7 @@ class Manager:
         # This will be NaN if liquidating
         print("Current prices are " + str(current_prices).strip('[]'))
         print("We think future prices are " + str(future_prices).strip('[]'))
-        price_gradient = 100*np.divide((future_prices - current_prices),current_prices) # percent
+        price_gradient = np.asarray(100 * np.divide((future_prices - current_prices), current_prices))  # percent
 
         # SELL COINS
         # Selling frees up funds for buying...
@@ -124,23 +124,26 @@ class Manager:
             # This sorts in ascending (not optional), therefore -1 for descending
             id_priority = np.argsort(-1 * sufficient_price_gradient)
             id_priority_coin_types_to_buy = id_coin_types_to_buy[id_priority].astype('int')
-            price_gradient_sorted = sufficient_price_gradient[[id_priority_coin_types_to_buy]]
+            price_gradient_sorted = sufficient_price_gradient[id_priority]
 
             # Get ordered list of coins to buy
             list_of_coin_types_to_buy = self.get_list_of_coin_types(id_priority_coin_types_to_buy)
 
-            # How much haven should we sell for each coin?
-            # TODO: currently same stake for all
-            num_haven_for_buy_value = self.buy_value / self.exchange.get_price(self.haven_coin_type)
+            # How much of each coin do we buy?
             num_coin_types_to_buy = len(list_of_coin_types_to_buy)
-            number_of_haven_to_sell = np.full(num_coin_types_to_buy, num_haven_for_buy_value)
+            num_coin_to_buy = np.full(num_coin_types_to_buy, np.nan)
+
+            # TODO FIXXXXXXX
+            num_haven_for_buy_value = self.buy_value / self.exchange.get_price(self.haven_coin_type)
+            num_coin_to_sell = np.full(num_coin_types_to_buy, num_haven_for_buy_value)
 
             for idx, coin_type in enumerate(list_of_coin_types_to_buy):
-                print('Buying ' + coin_type + ' with ' + str(num_haven_for_buy_value) + ' haven for expected profit of '
+                num_coin_to_buy[idx] = self.buy_value / self.exchange.get_price(coin_type)
+                print('Buying ' + str(num_coin_to_buy[idx]) + ' ' + coin_type + ' for expected profit of '
                       + str(price_gradient_sorted[idx]) + ' percent gainz')
 
             # "Buy" orders
-            transactions_to_make = self.buy_coins(list_of_coin_types_to_buy, number_of_haven_to_sell,
+            transactions_to_make = self.buy_coins(list_of_coin_types_to_buy, num_coin_to_buy, num_coin_to_sell,
                                                   total_liquid_funds)
 
             # Execute "buy" orders
@@ -218,16 +221,17 @@ class Manager:
         # After cancelling expired orders, add completed ones to portfolio
         self.portfolio.record_transaction(df_transactions_to_make)
 
-    def buy_coins(self, coin_types_to_buy, number_of_haven_to_sell, total_liquid_funds):
+    def buy_coins(self, coin_types_to_buy, num_to_buy, num_to_sell, total_liquid_funds):
         # Returns data frame of transactions
         transactions_to_make = pd.DataFrame(self.portfolio.df_transaction_format)
 
+        # TODO get coin sold from exchange!!
         # Each transaction sells a given number of a haven in exchange for coin_type
         for idx, coin_type in enumerate(coin_types_to_buy):
             if total_liquid_funds >= self.buy_value:
                 transaction_to_make = pd.DataFrame(
-                    data=[[self.haven_coin_type, number_of_haven_to_sell[idx], coin_type]],
-                    columns=['coin_type_sold', 'num_coin_sold', 'coin_type_bought'])
+                    data=[[self.haven_coin_type, num_to_buy[idx], num_to_sell[idx], coin_type]],
+                    columns=['coin_type_sold', 'num_coin_bought', 'num_coin_sold', 'coin_type_bought'])
                 # concat will set nan all unpopulated df values .e.f ID / time completed
                 transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
                 total_liquid_funds -= self.buy_value  # can we still afford transactions?

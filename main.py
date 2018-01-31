@@ -6,8 +6,7 @@ filename_coinstats = ''
 filename_portfolio = ''
 
 Autotrader = M.Manager(filename_coinstats=filename_coinstats, filename_portfolio=filename_portfolio)
-Autotrader.portfolio.deposit(121, 'NEO', 1)
-Autotrader.portfolio.deposit(6.85, 'LTC', 0.05)
+Autotrader.portfolio.deposit(127.85, 'USDT', 151.39893893)
 BRun = True
 tAutotraderWait = 0.5  # minutes
 while BRun:

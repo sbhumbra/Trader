@@ -9,7 +9,7 @@ import ccxt
 # some exchanges are back to front too - handle here
 
 class Exchange:
-    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0, sell_fee=0,
+    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0.1/100, sell_fee=0,
                  haven_coin_type='USDT',
                  filename_coinstats='', flag_fake_exchange=False):
 
@@ -55,16 +55,19 @@ class Exchange:
             if np.isnan(price):
                 for idx in range(0, num_transactions):
                     [to_buy, to_sell, coin_pair] = self.get_coin_pair(df_transaction, idx)
-                    amount_to_sell = df_transaction.at[idx, 'num_coin_sold']
-                    print('Buying ' + to_buy + ' for ' + str(amount_to_sell) + ' ' + to_sell)
-                    if to_buy == self.haven_coin_type:
+                    flag_sale = to_buy == self.haven_coin_type
+                    if flag_sale:
+                        amount = df_transaction.at[idx, 'num_coin_sold']
+                        print('Selling ' + str(amount) + ' ' + to_sell + ' for ' + to_buy)
                         out = self.marketplace.create_market_sell_order(
                             coin_pair,
-                            amount_to_sell)
+                            amount)
                     else:
+                        amount = df_transaction.at[idx, 'num_coin_bought']
+                        print('Buying ' + to_buy + ' for ' + str(amount) + ' ' + to_sell)
                         out = self.marketplace.create_market_buy_order(
                             coin_pair,
-                            amount_to_sell)
+                            amount)
                     df_transaction.at[idx, 'transaction_id'] = out['id']
             else:
                 raise Exception("Limit orders unsupported")
@@ -96,7 +99,7 @@ class Exchange:
                     transaction_id = df_transaction.at[idx, 'transaction_id']
                     order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
                     if order['status'] == 'closed':
-                        df_transaction.at[idx, 'num_coin_bought'] = order['amount']
+                        df_transaction.at[idx, 'num_coin_bought'] = order['amount']*(1-self.buy_fee)
                         df_transaction.at[idx, 'time_completed'] = int(order['timestamp'] / 1000)
                         flag_all_orders_completed[idx] = True
 
