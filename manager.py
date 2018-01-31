@@ -38,9 +38,10 @@ class Manager:
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy_ratio = 1  # percent expected gain
+        self.threshold_buy_ratio = 2  # percent expected gain
         self.threshold_sell_ratio = -1  # percent expected loss
         self.buy_value = 5  # euros
+        self.sell_lower_limit = 0.1  # euros - binance error if sell quantity too small :(
 
         # liquidation flag
         num_coin_types = len(self.list_of_coin_types)
@@ -64,6 +65,7 @@ class Manager:
                 future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
                 current_prices[idx] = self.exchange.get_price(coin_type)
                 num_coins_held[idx] = self.portfolio.num_coin_holding(coin_type)
+        current_values = np.multiply(current_prices,num_coins_held)
 
         # Calc p/l in future
         # This will be NaN if liquidating
@@ -77,7 +79,7 @@ class Manager:
         # If liquidating, future_profit_loss will be NaN and the check below will be False for all coins
         # This is good as it stops us making trades unintentionally when liquidating
         flag_loss = np.less(price_gradient, self.threshold_sell_ratio)
-        flag_have_coin = num_coins_held > 0
+        flag_have_coin = np.greater(current_values,self.sell_lower_limit)
         flag_loss_expected = np.logical_and(flag_loss, flag_have_coin)
 
         # Which coins should we sell?
@@ -228,7 +230,7 @@ class Manager:
         # TODO get coin sold from exchange!!
         # Each transaction sells a given number of a haven in exchange for coin_type
         for idx, coin_type in enumerate(coin_types_to_buy):
-            if total_liquid_funds >= self.buy_value:
+            if total_liquid_funds >= (2*self.buy_value): # safehack
                 transaction_to_make = pd.DataFrame(
                     data=[[self.haven_coin_type, num_to_buy[idx], num_to_sell[idx], coin_type]],
                     columns=['coin_type_sold', 'num_coin_bought', 'num_coin_sold', 'coin_type_bought'])

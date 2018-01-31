@@ -7,7 +7,7 @@ class Forecaster:
 
     def forecast(self, coin_type, timestamp):
         # timestamp (in future: vector of timestamps)
-        time_backwards = 10*60
+        time_backwards = 30*60
         now = int(time.time())
         dt = int(timestamp) - now
         current_price = self.exchange.get_price(coin_type)

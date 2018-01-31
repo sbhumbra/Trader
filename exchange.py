@@ -9,7 +9,8 @@ import ccxt
 # some exchanges are back to front too - handle here
 
 class Exchange:
-    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0.1/100, sell_fee=0,
+    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(), buy_fee=0.1 / 100,
+                 sell_fee=0,
                  haven_coin_type='USDT',
                  filename_coinstats='', flag_fake_exchange=False):
 
@@ -64,7 +65,7 @@ class Exchange:
                             amount)
                     else:
                         amount = df_transaction.at[idx, 'num_coin_bought']
-                        print('Buying ' + to_buy + ' for ' + str(amount) + ' ' + to_sell)
+                        print('Buying ' + str(amount) + to_buy + ' with ' + ' ' + to_sell)
                         out = self.marketplace.create_market_buy_order(
                             coin_pair,
                             amount)
@@ -99,7 +100,7 @@ class Exchange:
                     transaction_id = df_transaction.at[idx, 'transaction_id']
                     order = self.marketplace.fetch_order(transaction_id, symbol=coin_pair)
                     if order['status'] == 'closed':
-                        df_transaction.at[idx, 'num_coin_bought'] = order['amount']*(1-self.buy_fee)
+                        df_transaction.at[idx, 'num_coin_bought'] = order['amount'] * (1 - self.buy_fee)
                         df_transaction.at[idx, 'time_completed'] = int(order['timestamp'] / 1000)
                         flag_all_orders_completed[idx] = True
 

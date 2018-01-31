@@ -59,8 +59,10 @@ class Portfolio:
     def num_coin_holding(self, coin_type):
         s = self.coin_summary  # accessed as reference therefore same memory
         try:
-            p = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'num_coin']
-            return np.asscalar(p.values)
+            balance = self.exchange.marketplace.fetch_balance()
+            return balance[coin_type]['free']
+            #p = s.loc[s.loc[:, 'coin_type'].astype(str) == coin_type, 'num_coin']
+            #return np.asscalar(p.values)
         except:
             return 0
 
