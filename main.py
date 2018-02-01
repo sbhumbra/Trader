@@ -4,7 +4,7 @@ import manager as M
 
 Autotrader = M.Manager()
 BRun = True
-tAutotraderWait = 30  # minutes
+tAutotraderWait = 10  # minutes
 while BRun:
     Autotrader.trade()
     print('making loads')

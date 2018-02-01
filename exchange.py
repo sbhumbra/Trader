@@ -1,11 +1,11 @@
 import numpy as np
 import time
-import pandas as pd
 import ccxt
+from scipy.interpolate import interp1d
 
 
 class Exchange:
-    def __init__(self, coin_types, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(),
+    def __init__(self, marketplace=ccxt.binance(), haven_marketplace=ccxt.bitfinex(),
                  haven_coin_type='USDT'):
 
         self.df_transaction_format = {'transaction_id': [], 'coin_pair': [], 'transaction_amount': [],
@@ -84,63 +84,91 @@ class Exchange:
 
         df_transaction.drop(df_transaction.index[id_transactions_to_cancel], inplace=True)
 
-    def get_price(self, timestamp, coin_type='haven'):
-        # time mandatory and in seconds
+    def get_price(self, timestamp_start, coin_type='haven', timestamp_end=np.nan):
+        # timestamp mandatory and in seconds
+        # timestamp_end used to get price history in range [timestamp, timestamp_end]
         if coin_type == 'haven':
-            return self.get_price(timestamp, self.haven_coin_type)
+            return self.get_price(timestamp_start, self.haven_coin_type, timestamp_end)
         elif coin_type == 'EUR':
             return 1
 
-        print('Getting price at time: ' + str(timestamp))
-        exchange_rate = self.get_exchange_rate(timestamp, coin_type=coin_type)
+        if np.isnan(timestamp_end):
+            print('Getting price at time: ' + str(timestamp_start))
+        else:
+            print('Getting prices between time ' + str(timestamp_start) + ' and time ' + str(timestamp_end))
+
+        exchange_rate = self.get_exchange_rate(timestamp_start, coin_type=coin_type, timestamp_end=timestamp_end)
         if self.haven_coin_type == 'USDT':
             fiat_exchange_rate = self.dollar_to_euro
         else:
-            fiat_exchange_rate = self.dollar_to_euro * self.get_exchange_rate(timestamp,
+            fiat_exchange_rate = self.dollar_to_euro * self.get_exchange_rate(timestamp_start,
                                                                               coin_type=self.haven_coin_type,
-                                                                              coin_type_base='USD')  # shortcut for haven
-        price = exchange_rate * fiat_exchange_rate
-        print('Price: ' + str(price))
-        print('')
+                                                                              coin_type_base='USD',
+                                                                              timestamp_end=timestamp_end)  # shortcut for haven
+        price = np.multiply(exchange_rate, fiat_exchange_rate)
+        if np.isscalar(price):
+            print('Price: ' + str(price))
+            print('')
+
         return price
 
-    def get_exchange_rate(self, timestamp, coin_type='haven', coin_type_base='haven', marketplace=None):
+    def get_exchange_rate(self, timestamp_start, coin_type='haven', coin_type_base='haven', marketplace=None,
+                          timestamp_end=np.nan):
         coin_pair = coin_type + '/' + coin_type_base
         if coin_type == coin_type_base:
             if not coin_type == self.haven_coin_type:
-                print('WARNING: Check exchange rate? Pair: ' + coin_pair)
+                print('WARNING: Getting exchange rate for pair: ' + coin_pair)
             return 1
         elif coin_type == 'haven':
-            return self.get_exchange_rate(timestamp, self.haven_coin_type, 'USD', self.haven_marketplace)
+            return self.get_exchange_rate(timestamp_start, self.haven_coin_type, 'USD', self.haven_marketplace,
+                                          timestamp_end)
         elif coin_type_base == 'haven':
-            return self.get_exchange_rate(timestamp, coin_type, self.haven_coin_type, self.marketplace)
+            return self.get_exchange_rate(timestamp_start, coin_type, self.haven_coin_type, self.marketplace,
+                                          timestamp_end)
         else:
             print('Getting exchange rate: ' + coin_pair)
             if not marketplace:
                 marketplace = self.marketplace
 
             flag_complete = False
-            query_offset = 1  # minut3
+            query_counter = 0
 
             while not flag_complete:
                 try:
-                    # Make sure we go a minute in the past to get a value
-                    query_time = int(timestamp - (60 * query_offset)) * 1000
+                    # Make sure we go at least three minutes so that we get at least two data points
+                    query_time = int(timestamp_start - (180*1)) * 1000
 
+                    # All candles at one minute resolution since query time
                     candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
-                    exchange_rate = candles[0][4]
+                    candles = np.asarray(candles)
+                    timestamps = candles[:, 0] / 1000
+                    timestamp_min = np.min(timestamps)
+                    exchange_rates = candles[:, 4]
+
+                    if np.isnan(timestamp_end):
+                        # Linear interpolate to get exchange rate, clipping if necessary
+                        bounds = (exchange_rates[0], exchange_rates[-1])
+                        f = interp1d(timestamps, exchange_rates, bounds_error=False,
+                                     fill_value=bounds)  # will error if we only have one data point
+                        exchange_rate = np.asscalar(f(timestamp_start))
+                    else:
+                        # We want to return all exchange rates between timestamp_start and timestamp_end
+                        flag_in_range = np.logical_and(np.greater_equal(timestamps, timestamp_start),
+                                                       np.less_equal(timestamps, timestamp_end))
+                        exchange_rate = np.asarray(exchange_rates[flag_in_range])
 
                     flag_complete = True
-                    print('Exchange rate: ' + str(exchange_rate))
+                    # pythonic way of testing if a variable is a scalar
+                    if np.isscalar(exchange_rate):
+                        print('Exchange rate: ' + str(exchange_rate))
                     return exchange_rate
                 except:
-                    if query_offset == self.num_exchange_query_tolerance:
+                    query_counter += 1
+                    if query_counter == self.num_exchange_query_tolerance:
                         print('ERROR: max exchange query attempts reached!!!')
                         raise
-                    query_offset += 1
                     print('WARNING: exchange query failed, re-attempting')
-                    print('Getting price ' + str(query_offset) + ' minutes earlier')
-                    time.sleep(2)
+                    time.sleep(1)
 
     def value_coin_holding(self, coin_type):
         now = int(time.time())

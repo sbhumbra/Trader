@@ -13,6 +13,7 @@ class Manager:
     def __init__(self, filename_coinstats='', filename_portfolio=''):
         # Exchange abstracts conversions so these coins need not go directly to Haven (USDT)
         # coins tradeable with USDT on binance
+        # can get this from exchange
         self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
 
         binance = ccxt.binance()
@@ -21,23 +22,22 @@ class Manager:
         binance.secret = mat_file["api_secret"][0]
 
         # robust wrapper for placing / querying / cancelling orders & getting prices
-        self.exchange = E.Exchange(coin_types=self.list_of_coin_types, marketplace=binance,
-                                   haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
+        self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
 
         # for predicting future prices / exchange rates
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
         # TODO we can get this from the exchange (see get_markets), different for each pair
-        self.threshold_buy_ratio = 2  # percent expected gain
+        self.threshold_buy_ratio = 1  # percent expected gain
         self.threshold_sell_ratio = -2  # percent expected loss
-        self.buy_value = 10  # euros
+        self.buy_value = 5  # euros
         self.sell_lower_limit = 0.1  # euros - binance error if sell quantity too small :(
 
     def trade(self):
         # get current timestamp and get future timestamp for prediction
         now = int(time.time())
-        prediction_time = 60*60 # seconds
+        prediction_time = 60 * 60  # seconds
         future_time = now + prediction_time
 
         # instantiate containers for current / future values
@@ -64,7 +64,7 @@ class Manager:
         # Selling frees up funds for buying...
         # Sell anything that's performing worse than threshold and that we own enough of
         flag_loss = np.less(price_gradient, self.threshold_sell_ratio)
-        flag_have_coin = np.greater(current_values, self.sell_lower_limit) # euros
+        flag_have_coin = np.greater(current_values, self.sell_lower_limit)  # euros
         flag_sell_coin = np.logical_and(flag_loss, flag_have_coin)
 
         if any(flag_sell_coin):
