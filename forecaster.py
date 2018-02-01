@@ -1,5 +1,5 @@
 import time
-
+import numpy as np
 
 class Forecaster:
     def __init__(self, exchange):
@@ -13,16 +13,21 @@ class Forecaster:
         current_price = self.exchange.get_price(now, coin_type)
 
         # How far backwards in time do we go?
-        time_backwards = 30 * 60
+        time_backwards = 20 * 60
 
-        # Get previous time
+        # Get delta time between future and now
         dt = int(timestamp) - now
 
-        # Get previous price
-        last_price = self.exchange.get_price(now - time_backwards, coin_type)
+        # Get history of past prices
+        price_history = self.exchange.get_price(now - time_backwards, coin_type, now)
 
-        # Get price derivative
-        dprice_dt = (current_price - last_price) / time_backwards
+        # Create time axis (1 minute spacing) for fit
+        num_points = len(price_history)
+        time_axis = np.linspace(0,(num_points-1)*60,num_points)
+
+        # Linear fit
+        coeff = np.polyfit(time_axis,price_history,1)
+        dprice_dt = coeff[0]
 
         # Linear extrapolation to get future price
         future_price = current_price + dprice_dt * dt

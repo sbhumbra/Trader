@@ -136,7 +136,7 @@ class Exchange:
             while not flag_complete:
                 try:
                     # Make sure we go at least three minutes so that we get at least two data points
-                    query_time = int(timestamp_start - (180*1)) * 1000
+                    query_time = int(timestamp_start - (180 * 1)) * 1000
 
                     # All candles at one minute resolution since query time
                     candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
