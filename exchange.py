@@ -49,6 +49,9 @@ class Exchange:
                 if flag_sell:
                     print('Pair: ' + coin_pair + ' ; Selling: ' + str(amount))
                     out = self.marketplace.create_market_sell_order(coin_pair, amount)
+                    df_transaction.at[idx, 'transaction_id'] = out['id']
+                    # correct amount to what was actually traded
+                    df_transaction.at[idx, 'transaction_amount'] = amount
                 else:
                     print('Pair: ' + coin_pair + ' ; Buying: ' + str(amount))
                     number_attempts = 0
