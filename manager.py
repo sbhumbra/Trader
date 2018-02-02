@@ -15,6 +15,7 @@ class Manager:
         # coins tradeable with USDT on binance
         # can get this from exchange
         self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
+        # self.list_of_coin_types = ['NEO']
 
         binance = ccxt.binance()
         mat_file = sio.loadmat("api_things.mat")
@@ -31,8 +32,7 @@ class Manager:
         # TODO we can get this from the exchange (see get_markets), different for each pair
         self.threshold_buy_ratio = 1  # percent expected gain
         self.threshold_sell_ratio = -2  # percent expected loss
-        self.buy_value = 5  # euros
-        self.sell_lower_limit = 0.1  # euros - binance error if sell quantity too small :(
+        self.buy_value = 1  # euros
 
     def trade(self):
         # get current timestamp and get future timestamp for prediction
@@ -55,6 +55,7 @@ class Manager:
         current_values = np.multiply(current_prices, num_coins_held)
 
         # Calculate price gradient
+        print("Coins are " + str(self.list_of_coin_types))
         print("Current prices are " + str(current_prices).strip('[]'))
         print("We think future prices are " + str(future_prices).strip('[]'))
         print('')
@@ -64,7 +65,7 @@ class Manager:
         # Selling frees up funds for buying...
         # Sell anything that's performing worse than threshold and that we own enough of
         flag_loss = np.less(price_gradient, self.threshold_sell_ratio)
-        flag_have_coin = np.greater(current_values, self.sell_lower_limit)  # euros
+        flag_have_coin = np.greater(num_coins_held, 0)
         flag_sell_coin = np.logical_and(flag_loss, flag_have_coin)
 
         if any(flag_sell_coin):
@@ -88,15 +89,17 @@ class Manager:
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
         # BUY COINS
-        # Buy anything that's performing better than threshold and that we can afford easily (safehack)
-        flag_buy_coin = np.greater(price_gradient, self.threshold_buy_ratio)
+        # Buy anything that's performing better than threshold and that we can afford easily
+        flag_gain = np.greater(price_gradient, self.threshold_buy_ratio)
 
         # How much haven have we got?
         total_liquid_funds = self.exchange.get_liquid_funds()
 
-        flag_have_money_to_spend = total_liquid_funds > (2 * self.buy_value)
+        flag_have_money_to_spend = np.greater(total_liquid_funds, 0)
 
-        if any(flag_buy_coin) and flag_have_money_to_spend:
+        flag_buy_coin = np.logical_and(flag_gain, flag_have_money_to_spend)
+
+        if any(flag_buy_coin):
             print("Buying coinage...")
             print('')
 
@@ -117,12 +120,21 @@ class Manager:
             num_coin_to_buy = np.full(num_coin_types_to_buy, np.nan)
 
             for idx, coin_type in enumerate(list_of_coin_types_to_buy):
-                num_coin_to_buy[idx] = self.buy_value / self.exchange.get_price(now, coin_type)
+                funds_to_spend = np.minimum(self.buy_value, total_liquid_funds)
+                num_coin_to_buy[idx] = funds_to_spend / self.exchange.get_price(now, coin_type)
+                total_liquid_funds -= funds_to_spend
                 print('Buying ' + str(num_coin_to_buy[idx]) + ' ' + coin_type + ' for expected profit of '
                       + str(price_gradient_sorted[idx]) + ' percent gainz')
+                if total_liquid_funds == 0:
+                    break
+
+            id_coins_cannot_afford = np.isnan(num_coin_to_buy)
+
+            num_coin_to_buy = num_coin_to_buy[np.logical_not(id_coins_cannot_afford)]
+            list_of_coin_types_to_buy = list_of_coin_types_to_buy[np.logical_not(id_coins_cannot_afford)]
 
             # "Buy" orders
-            transactions_to_make = self.buy_coins(list_of_coin_types_to_buy, num_coin_to_buy, total_liquid_funds)
+            transactions_to_make = self.buy_coins(list_of_coin_types_to_buy, num_coin_to_buy)
 
             # Execute "buy" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
@@ -150,23 +162,18 @@ class Manager:
         if not orders_completed:
             self.exchange.cancel_order(df_transactions_to_make)
 
-    def buy_coins(self, coin_types_to_buy, num_to_buy, total_liquid_funds):
+    def buy_coins(self, coin_types_to_buy, num_to_buy):
         # Returns data frame of transactions
         transactions_to_make = pd.DataFrame(self.exchange.df_transaction_format)
 
         # Each transaction sells a given number of a haven in exchange for coin_type
         for idx, coin_type in enumerate(coin_types_to_buy):
             coin_pair = coin_type + '/' + self.exchange.haven_coin_type
-            if total_liquid_funds >= (2 * self.buy_value):  # safehack
-                transaction_to_make = pd.DataFrame(
-                    data=[[coin_pair, num_to_buy[idx], 'buy']],
-                    columns=['coin_pair', 'transaction_amount', 'transaction_type'])
-                # concat will set nan all unpopulated df values .e.f ID / time completed
-                transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
-                total_liquid_funds -= self.buy_value  # can we still afford transactions?
-            else:
-                break
-
+            transaction_to_make = pd.DataFrame(
+                data=[[coin_pair, num_to_buy[idx], 'buy']],
+                columns=['coin_pair', 'transaction_amount', 'transaction_type'])
+            # concat will set nan all unpopulated df values .e.f ID / time completed
+            transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
         return transactions_to_make
 
     def sell_coins(self, coin_types_to_sell, number_of_coins_to_sell):
@@ -185,5 +192,4 @@ class Manager:
 
     def get_list_of_coin_types(self, id_coin_types_to_get):
         list_of_coin_types = [self.list_of_coin_types[i] for i in id_coin_types_to_get]
-        return list_of_coin_types
-
+        return np.array(list_of_coin_types)

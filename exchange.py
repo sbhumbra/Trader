@@ -15,6 +15,8 @@ class Exchange:
         #   Get coin-coin exchange rates from this marketplace (e.g. binance)
         self.marketplace = marketplace
 
+        self.marketplace.load_markets(True)
+
         #   Get haven-dollar exchange rate from this marketplace (e.g. bitfinex)
         self.haven_marketplace = haven_marketplace
         self.haven_coin_type = haven_coin_type
@@ -39,15 +41,32 @@ class Exchange:
                 coin_pair = df_transaction.at[idx, 'coin_pair']
                 flag_sell = df_transaction.at[idx, 'transaction_type'] == 'sell'
                 amount = df_transaction.at[idx, 'transaction_amount']
+                coin_pair_limits = self.marketplace.markets[coin_pair]['limits']
+                coin_pair_resolution = self.marketplace.markets[coin_pair]['lot']
+                amount = np.maximum(coin_pair_limits['amount']['min'], amount)
+                amount = np.floor(amount / coin_pair_resolution) * coin_pair_resolution
+
                 if flag_sell:
                     print('Pair: ' + coin_pair + ' ; Selling: ' + str(amount))
                     out = self.marketplace.create_market_sell_order(coin_pair, amount)
                 else:
                     print('Pair: ' + coin_pair + ' ; Buying: ' + str(amount))
-                    out = self.marketplace.create_market_buy_order(coin_pair, amount)
-                df_transaction.at[idx, 'transaction_id'] = out['id']
-
-            print('')
+                    number_attempts = 0
+                    while number_attempts < self.num_exchange_query_tolerance:
+                        try:
+                            out = self.marketplace.create_market_buy_order(coin_pair, amount)
+                            df_transaction.at[idx, 'transaction_id'] = out['id']
+                            # correct amount to what was actually traded
+                            df_transaction.at[idx, 'transaction_amount'] = amount
+                            break
+                        except ccxt.errors.InsufficientFunds:
+                            print('Insufficient funds - retrying with lower buy amount')
+                            number_attempts += 1
+                            # we tried to buy too many coins - try to get fewer
+                            amount = amount * 0.95
+                            amount = np.maximum(coin_pair_limits['amount']['min'], amount)
+                            amount = np.floor(amount / coin_pair_resolution) * coin_pair_resolution
+            return
         else:
             raise Exception("Limit orders unsupported")
 
@@ -93,10 +112,10 @@ class Exchange:
         elif coin_type == 'EUR':
             return 1
 
-        if np.isnan(timestamp_end):
-            print('Getting price at time: ' + str(timestamp_start))
-        else:
-            print('Getting prices between time ' + str(timestamp_start) + ' and time ' + str(timestamp_end))
+        # if np.isnan(timestamp_end):
+        # print('Getting price at time: ' + str(timestamp_start))
+        # else:
+        # print('Getting prices between time ' + str(timestamp_start) + ' and time ' + str(timestamp_end))
 
         exchange_rate = self.get_exchange_rate(timestamp_start, coin_type=coin_type, timestamp_end=timestamp_end)
         if self.haven_coin_type == 'USDT':
@@ -107,9 +126,6 @@ class Exchange:
                                                                               coin_type_base='USD',
                                                                               timestamp_end=timestamp_end)
         price = np.multiply(exchange_rate, fiat_exchange_rate)
-        if np.isscalar(price):
-            print('Price: ' + str(price))
-            print('')
 
         return price
 
@@ -127,7 +143,6 @@ class Exchange:
             return self.get_exchange_rate(timestamp_start, coin_type, self.haven_coin_type, self.marketplace,
                                           timestamp_end)
         else:
-            print('Getting exchange rate: ' + coin_pair)
             if not marketplace:
                 marketplace = self.marketplace
 
@@ -158,9 +173,6 @@ class Exchange:
                         exchange_rate = np.asarray(exchange_rates[flag_in_range])
 
                     flag_complete = True
-                    # pythonic way of testing if a variable is a scalar
-                    if np.isscalar(exchange_rate):
-                        print('Exchange rate: ' + str(exchange_rate))
                     return exchange_rate
                 except:
                     query_counter += 1
@@ -177,14 +189,26 @@ class Exchange:
         return num_coins * price_per_coin
 
     def num_coin_holding(self, coin_type):
+        # net of buffer we need to keep
         num_attempts = 0
         while num_attempts < self.num_exchange_query_tolerance:
             try:
                 balance = self.marketplace.fetch_balance()
-                return balance[coin_type]['free']
+                coin_balance = balance[coin_type]['free']
+                if coin_type == 'USDT':
+                    # for the pairs I've seen we need to round down to the nearest cent
+                    # not generic for other havens
+                    coin_resolution = 0.01
+                    coin_balance = np.floor(coin_balance / coin_resolution) * coin_resolution
+                else:
+                    coin_pair = coin_type + '/' + self.haven_coin_type
+                    coin_max_limit = self.marketplace.markets[coin_pair]['limits']['amount']['max']
+                    coin_resolution = self.marketplace.markets[coin_pair]['lot']
+                    coin_balance = np.minimum(coin_balance, coin_max_limit)
+                    coin_balance = np.floor(coin_balance / coin_resolution) * coin_resolution
+                return coin_balance
             except:
                 num_attempts += 1
-
         print('ERROR: num_coin_holding ; unable to get value from exchange')
         return 0
 
