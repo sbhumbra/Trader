@@ -1,6 +1,7 @@
-import manager as M
-import exchange as E
 import time
+
+import exchange as E
+import manager as M
 
 
 def db_get_dummy_buy_transaction():
@@ -29,6 +30,5 @@ def db_cancel_dummy_order(test_transaction):
 
 
 def db_forecast():
-    A = M.Manager()
-    A.portfolio.deposit(70, 'NEO', .58941)
-    A.forecaster.forecast('NEO', int(time.time()) + 10 * 60)
+    a = M.Manager()
+    a.forecaster.forecast('NEO', int(time.time()) + 10 * 60)

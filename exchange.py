@@ -1,6 +1,7 @@
-import numpy as np
 import time
+
 import ccxt
+import numpy as np
 from scipy.interpolate import interp1d
 
 
@@ -104,7 +105,7 @@ class Exchange:
             fiat_exchange_rate = self.dollar_to_euro * self.get_exchange_rate(timestamp_start,
                                                                               coin_type=self.haven_coin_type,
                                                                               coin_type_base='USD',
-                                                                              timestamp_end=timestamp_end)  # shortcut for haven
+                                                                              timestamp_end=timestamp_end)
         price = np.multiply(exchange_rate, fiat_exchange_rate)
         if np.isscalar(price):
             print('Price: ' + str(price))
@@ -142,7 +143,6 @@ class Exchange:
                     candles = marketplace.fetch_ohlcv(coin_pair, '1m', query_time)
                     candles = np.asarray(candles)
                     timestamps = candles[:, 0] / 1000
-                    timestamp_min = np.min(timestamps)
                     exchange_rates = candles[:, 4]
 
                     if np.isnan(timestamp_end):

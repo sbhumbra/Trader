@@ -187,11 +187,3 @@ class Manager:
         list_of_coin_types = [self.list_of_coin_types[i] for i in id_coin_types_to_get]
         return list_of_coin_types
 
-    def get_coin_pair(self, df_transaction, idx):
-        to_buy = df_transaction.at[idx, 'coin_type_bought']
-        to_sell = df_transaction.at[idx, 'coin_type_sold']
-        if to_buy == self.haven_coin_type:
-            coin_pair = to_sell + '/' + to_buy
-        else:
-            coin_pair = to_buy + '/' + to_sell
-        return [to_buy, to_sell, coin_pair]
