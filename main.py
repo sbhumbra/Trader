@@ -25,4 +25,9 @@ while BRun:
             BRun = False
             break
     print('')
+
+# cash out
+Autotrader.threshold_buy_ratio = 1000
+Autotrader.threshold_sell_ratio = 500
+Autotrader.trade()
 Autotrader.stop_trading()
