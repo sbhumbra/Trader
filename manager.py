@@ -33,15 +33,29 @@ class Manager:
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy_ratio = 1  # percent expected gain
-        self.threshold_sell_ratio = -2  # percent expected loss
+        self.threshold_buy_ratio = 3  # percent expected gain
+        self.threshold_sell_ratio = -8  # percent expected loss
         self.buy_value = 5  # euros
+
+        self.total_liquid_funds = self.exchange.get_liquid_funds()
+        num_coin_types = len(self.list_of_coin_types)
+        self.current_values = np.full(num_coin_types, np.nan)
+        # Loop through all coins and get value
+        for idx, coin_type in enumerate(self.list_of_coin_types):
+            self.current_values[idx] = self.exchange.value_coin_holding(coin_type)
+
+        print('Current portfolio value: ' + str(self.total_liquid_funds + np.sum(self.current_values)) + ' euros')
 
     def trade(self):
         # get current timestamp and get future timestamp for prediction
         now = int(time.time())
         prediction_time = 60 * 60  # seconds
         future_time = now + prediction_time
+
+        # How much haven have we got?
+        past_liquid_funds = self.total_liquid_funds
+        self.total_liquid_funds = self.exchange.get_liquid_funds()
+        total_liquid_funds = self.total_liquid_funds # decrement this otherwise past valuation is wrong
 
         # instantiate containers for current / future values
         num_coin_types = len(self.list_of_coin_types)
@@ -55,6 +69,23 @@ class Manager:
             future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
             current_prices[idx] = self.exchange.get_price(now, coin_type)
             num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
+
+        # Portfolio snapshot
+        past_values = self.current_values
+        past_portfolio_value = np.sum(past_values) + past_liquid_funds
+
+        self.current_values = np.multiply(current_prices, num_coins_held)
+        current_portfolio_value = np.sum(self.current_values) + self.total_liquid_funds
+
+        relative_change_per_coin = 100 * np.divide(self.current_values - past_values, past_values)
+        relative_change = 100 * (current_portfolio_value - past_portfolio_value) / past_portfolio_value
+
+        print('Current portfolio value: ' + str(current_portfolio_value) + ' ; ' + str(relative_change) + ' %')
+        print("Coins are " + str(self.list_of_coin_types))
+        print("Current holding: " + str(self.current_values).strip('[]'))
+        print("Previous holding: " + str(past_values).strip('[]'))
+        print("Relative change: " + str(relative_change_per_coin).strip('[]'))
+        print('')
 
         # Calculate price gradient
         print("Coins are " + str(self.list_of_coin_types))
@@ -94,12 +125,7 @@ class Manager:
         # BUY COINS
         # Buy anything that's performing better than threshold and that we can afford
         flag_gain = np.greater(price_gradient, self.threshold_buy_ratio)
-
-        # How much haven have we got?
-        total_liquid_funds = self.exchange.get_liquid_funds()
-
         flag_have_money_to_spend = np.greater(total_liquid_funds, 0)
-
         flag_buy_coin = np.logical_and(flag_gain, flag_have_money_to_spend)
 
         if any(flag_buy_coin):
