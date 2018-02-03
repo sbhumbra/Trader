@@ -6,16 +6,16 @@ import pandas as pd
 import scipy.io as sio
 
 import exchange as E
+import fake_exchange as FE
 import forecaster as F
 
 
 class Manager:
-    def __init__(self, filename_coinstats='', filename_portfolio=''):
+    def __init__(self, flag_fake_exchange=False):
         # Exchange abstracts conversions so these coins need not go directly to Haven (USDT)
         # coins tradeable with USDT on binance
         # can get this from exchange
         self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
-        # self.list_of_coin_types = ['NEO']
 
         binance = ccxt.binance()
         mat_file = sio.loadmat("api_things.mat")
@@ -23,7 +23,11 @@ class Manager:
         binance.secret = mat_file["api_secret"][0]
 
         # robust wrapper for placing / querying / cancelling orders & getting prices
-        self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
+        if flag_fake_exchange:
+            self.exchange = FE.FakeExchange(marketplace=binance,
+                                            haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
+        else:
+            self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
 
         # for predicting future prices / exchange rates
         self.forecaster = F.Forecaster(self.exchange)
@@ -83,7 +87,8 @@ class Manager:
                 number_of_coins_to_sell[idx] = self.exchange.num_coin_holding(coin_type)
 
             # "Sell" orders
-            transactions_to_make = self.sell_coins(list_of_coin_types_to_sell, number_of_coins_to_sell)
+            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_sell, number_of_coins_to_sell,
+                                                                  'sell')
 
             # Execute "sell" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
@@ -134,7 +139,7 @@ class Manager:
             list_of_coin_types_to_buy = list_of_coin_types_to_buy[np.logical_not(id_coins_cannot_afford)]
 
             # "Buy" orders
-            transactions_to_make = self.buy_coins(list_of_coin_types_to_buy, num_coin_to_buy)
+            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_buy, num_coin_to_buy, 'buy')
 
             # Execute "buy" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
@@ -162,32 +167,17 @@ class Manager:
         if not orders_completed:
             self.exchange.cancel_order(df_transactions_to_make)
 
-    def buy_coins(self, coin_types_to_buy, num_to_buy):
-        # Returns data frame of transactions
+    def list_transactions_to_make(self, coin_types_to_trade, transaction_amounts, transaction_type):
         transactions_to_make = pd.DataFrame(self.exchange.df_transaction_format)
 
         # Each transaction sells a given number of a haven in exchange for coin_type
-        for idx, coin_type in enumerate(coin_types_to_buy):
+        for idx, coin_type in enumerate(coin_types_to_trade):
             coin_pair = coin_type + '/' + self.exchange.haven_coin_type
             transaction_to_make = pd.DataFrame(
-                data=[[coin_pair, num_to_buy[idx], 'buy']],
+                data=[[coin_pair, transaction_amounts[idx], transaction_type]],
                 columns=['coin_pair', 'transaction_amount', 'transaction_type'])
-            # concat will set nan all unpopulated df values .e.f ID / time completed
+            # concat will set nan all unpopulated df values .e.g ID
             transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
-        return transactions_to_make
-
-    def sell_coins(self, coin_types_to_sell, number_of_coins_to_sell):
-        # Returns data frame of transactions
-        transactions_to_make = pd.DataFrame(self.exchange.df_transaction_format)
-
-        # Each transaction sells a given number of a coin type in exchange for haven
-        for idx, coin_type in enumerate(coin_types_to_sell):
-            coin_pair = coin_type + '/' + self.exchange.haven_coin_type
-            transaction_to_make = pd.DataFrame(data=[[coin_pair, number_of_coins_to_sell[idx], 'sell']],
-                                               columns=['coin_pair', 'transaction_amount', 'transaction_type'])
-            # concat will set nan all unpopulated df values e.g. ID
-            transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
-
         return transactions_to_make
 
     def get_list_of_coin_types(self, id_coin_types_to_get):
