@@ -33,10 +33,9 @@ class Manager:
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        # TODO we can get this from the exchange (see get_markets), different for each pair
         self.threshold_buy_ratio = 1  # percent expected gain
         self.threshold_sell_ratio = -2  # percent expected loss
-        self.buy_value = 1  # euros
+        self.buy_value = 5  # euros
 
     def trade(self):
         # get current timestamp and get future timestamp for prediction
@@ -56,7 +55,6 @@ class Manager:
             future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
             current_prices[idx] = self.exchange.get_price(now, coin_type)
             num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
-        current_values = np.multiply(current_prices, num_coins_held)
 
         # Calculate price gradient
         print("Coins are " + str(self.list_of_coin_types))
@@ -87,14 +85,14 @@ class Manager:
                 number_of_coins_to_sell[idx] = self.exchange.num_coin_holding(coin_type)
 
             # "Sell" orders
-            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_sell, number_of_coins_to_sell,
-                                                                  'sell')
+            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_sell,
+                                                                  number_of_coins_to_sell, 'sell')
 
             # Execute "sell" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
         # BUY COINS
-        # Buy anything that's performing better than threshold and that we can afford easily
+        # Buy anything that's performing better than threshold and that we can afford
         flag_gain = np.greater(price_gradient, self.threshold_buy_ratio)
 
         # How much haven have we got?
@@ -139,7 +137,8 @@ class Manager:
             list_of_coin_types_to_buy = list_of_coin_types_to_buy[np.logical_not(id_coins_cannot_afford)]
 
             # "Buy" orders
-            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_buy, num_coin_to_buy, 'buy')
+            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_buy,
+                                                                  num_coin_to_buy, 'buy')
 
             # Execute "buy" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
@@ -158,19 +157,19 @@ class Manager:
         orders_completed = 0
         for i in range(1, timeout):
             orders_completed = self.exchange.query_order(df_transactions_to_make)
-            time.sleep(1)
-            # TODO: cancel if price forecast changes?
             if orders_completed:
                 break
+
+            time.sleep(1)
 
         # Cancel orders which have been on the exchange too long
         if not orders_completed:
             self.exchange.cancel_order(df_transactions_to_make)
 
     def list_transactions_to_make(self, coin_types_to_trade, transaction_amounts, transaction_type):
+
         transactions_to_make = pd.DataFrame(self.exchange.df_transaction_format)
 
-        # Each transaction sells a given number of a haven in exchange for coin_type
         for idx, coin_type in enumerate(coin_types_to_trade):
             coin_pair = coin_type + '/' + self.exchange.haven_coin_type
             transaction_to_make = pd.DataFrame(

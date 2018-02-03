@@ -14,7 +14,6 @@ class Exchange:
 
         #   Get coin-coin exchange rates from this marketplace (e.g. binance)
         self.marketplace = marketplace
-
         self.marketplace.load_markets(True)
 
         #   Get haven-dollar exchange rate from this marketplace (e.g. bitfinex)
@@ -25,7 +24,6 @@ class Exchange:
         self.dollar_to_euro = 0.81
 
         #   If the exchange doesn't return a price, we wait and query again this many times before giving up.
-        #   Every query attempt, we iterate backwards in time to have more chance of getting a price
         self.num_exchange_query_tolerance = 5
 
         # trades = binance.fetch_my_trades('BTC/USDT') - get transaction
@@ -33,7 +31,6 @@ class Exchange:
 
     def place_order(self, df_transaction, price=np.nan):
         # place order, then update transaction_id.
-        # num_coin_bought and time_completed will still be empty
         # price to be used if we don't want market rate and instead want to place a limit order
         num_transactions = len(df_transaction.index)
         if np.isnan(price):
@@ -66,7 +63,7 @@ class Exchange:
                             print('Insufficient funds - retrying with lower buy amount')
                             number_attempts += 1
                             # we tried to buy too many coins - try to get fewer
-                            amount = amount * 0.95
+                            amount *= 0.95
                             amount = np.maximum(coin_pair_limits['amount']['min'], amount)
                             amount = np.floor(amount / coin_pair_resolution) * coin_pair_resolution
             return
@@ -75,11 +72,8 @@ class Exchange:
 
     def query_order(self, df_transaction):
         # This time we must have the id - it checks the status of the transaction on the marketplace.
-        # If gone through, fills in num_coin_bought and time_completed
-        #   otherwise nothing.
-        # df_transaction is a dataframe and can contain many orders
-        # It is passed as reference
-        # Don't query an order if it's already been completed
+        # df_transaction is a dataframe and can contain many orders; it is passed as reference
+        # Don't query an order if it has already been completed
         # Return True/False if ALL orders completed
         num_transactions = len(df_transaction.index)
         flag_all_orders_completed = np.full(num_transactions, False)

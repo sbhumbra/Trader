@@ -51,6 +51,10 @@ class FakeBinance(ccxt.binance):
         return {'id': self.num_transactions}
 
     def create_fake_order(self, symbol, coin_type_bought, coin_type_sold, trade_amount, trade_fee, market_price):
+        if trade_amount < 0:
+            print('Trade amount: ' + str(trade_amount))
+            raise Exception('Fake exchange: invalid trade quantity!!')
+
         flag_waiting_for_bids = True
         while flag_waiting_for_bids:
             order_book = self.fetch_order_book(symbol)
@@ -59,8 +63,15 @@ class FakeBinance(ccxt.binance):
                 bid_average = np.median(bids, axis=0)
                 bid_average = bid_average[0]  # first element is exchange rate, second element is amount
 
-                self.decrease_coin_holding(coin_type_sold, trade_amount)
-                self.increase_coin_holding(coin_type_bought, trade_amount * bid_average * (1 - trade_fee))
+                if market_price == 'asks':
+                    # Buying: increase a coin by trade amount and decrease another using bid average and fee
+                    self.decrease_coin_holding(coin_type_sold, trade_amount * bid_average * (1 - trade_fee))
+                    self.increase_coin_holding(coin_type_bought, trade_amount)
+                else:
+                    # Selling: decrease a coin by trade amount and increase another using bid average and fee
+                    self.decrease_coin_holding(coin_type_sold, trade_amount)
+                    self.increase_coin_holding(coin_type_bought, trade_amount * bid_average * (1 - trade_fee))
+
                 self.num_transactions += 1
                 flag_waiting_for_bids = False
 
@@ -77,4 +88,7 @@ class FakeBinance(ccxt.binance):
         self.coin_holdings[coin_type]['free'] += amount
 
     def decrease_coin_holding(self, coin_type, amount):
+        if self.coin_holdings[coin_type]['free'] < amount:
+            raise ccxt.errors.InsufficientFunds
+
         self.coin_holdings[coin_type]['free'] -= amount
