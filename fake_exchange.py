@@ -10,4 +10,5 @@ class FakeExchange(exchange.Exchange):
 
         # Set fake marketplace
         self.marketplace = fake_binance.FakeBinance()
+        print('Populating fake exchange from real exchange...')
         self.marketplace.populate_coin_portfolio(marketplace,self.num_exchange_query_tolerance)

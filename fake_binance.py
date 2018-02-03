@@ -7,7 +7,7 @@ class FakeBinance(ccxt.binance):
         super(FakeBinance, self).__init__()
 
         #   Track number of coins held
-        self.coin_holdings = self.create_blank_coin_portflio()
+        self.coin_holdings = {}
         d = self.describe()
         self.buy_fee = d['fees']['trading']['taker']
         self.sell_fee = d['fees']['trading']['maker']
@@ -21,26 +21,18 @@ class FakeBinance(ccxt.binance):
                 balance = marketplace.fetch_balance()
                 balance = balance['free']
                 coins_held = [[coin_type, balance[coin_type]] for coin_type in balance if balance[coin_type] > 0]
-                for idx in range(1, len(coins_held)):
+                for idx in np.arange(len(coins_held)):
                     coin_held = coins_held[idx]
+                    print(coin_held)
                     coin_type_held = coin_held[0]
                     num_coin_held = coin_held[1]
-                    self.coin_holdings[coin_type_held]['free'] = num_coin_held
+                    self.coin_holdings[coin_type_held] = {'free': num_coin_held}
 
-                trim = self.coin_holdings.pop('ALEXCOIN')
-                trim = self.coin_holdings.pop('LUCACOIN')
                 return
             except:
                 num_attempts += 1
 
         raise Exception("ERROR: FakeBinance num_coin_holding - unable to get value from exchange")
-
-    def create_blank_coin_portflio(self):
-        # This is a Python structure.
-        # The behaviour is similar to a Matlab structure i.e. we can add fields as required
-        return {'ALEXCOIN': {'free': 0},
-                'LUCACOIN': {'free': 0},
-                }
 
     def create_market_buy_order(self, symbol, amount, params=None):
         coin_type_bought = symbol.split('/')[0]  # left side, e.g. 'NEO','BNB',...
