@@ -1,5 +1,6 @@
 import ccxt
 import numpy as np
+import copy
 
 
 class FakeBinance(ccxt.binance):
@@ -7,32 +8,24 @@ class FakeBinance(ccxt.binance):
         super(FakeBinance, self).__init__()
 
         #   Track number of coins held
-        self.coin_holdings = {}
+        self.fake_balance = {}
+        self.fake_balance['free'] = {}
         d = self.describe()
         self.buy_fee = d['fees']['trading']['taker']
         self.sell_fee = d['fees']['trading']['maker']
 
         self.num_transactions = 0
 
-    def populate_coin_portfolio(self, marketplace, num_exchange_query_tolerance):
-        num_attempts = 0
-        while num_attempts < num_exchange_query_tolerance:
-            try:
-                balance = marketplace.fetch_balance()
-                balance = balance['free']
-                coins_held = [[coin_type, balance[coin_type]] for coin_type in balance if balance[coin_type] > 0]
-                for idx in np.arange(len(coins_held)):
-                    coin_held = coins_held[idx]
-                    print(coin_held)
-                    coin_type_held = coin_held[0]
-                    num_coin_held = coin_held[1]
-                    self.coin_holdings[coin_type_held] = {'free': num_coin_held}
-
-                return
-            except:
-                num_attempts += 1
-
-        raise Exception("ERROR: FakeBinance num_coin_holding - unable to get value from exchange")
+    def populate_from_portfolio(self, portfolio):
+        current_holdings = copy.deepcopy(portfolio.current_holdings)
+        self.fake_balance = {}
+        self.fake_balance['free'] = {}
+        while current_holdings:
+            # Remove coin from the list (while loop ends at empty list)
+            coin_held = current_holdings.popitem()
+            print(coin_held)
+            self.fake_balance['free'][coin_held[0]] = coin_held[1]['num']
+            self.fake_balance[coin_held[0]] = {'free': coin_held[1]['num']}
 
     def create_market_buy_order(self, symbol, amount, params=None):
         coin_type_bought = symbol.split('/')[0]  # left side, e.g. 'NEO','BNB',...
@@ -82,7 +75,7 @@ class FakeBinance(ccxt.binance):
         pass
 
     def fetch_balance(self, params=None):
-        return self.coin_holdings
+        return self.fake_balance
 
     def increase_coin_holding(self, coin_type, amount):
         self.coin_holdings[coin_type]['free'] += amount

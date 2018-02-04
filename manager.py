@@ -8,6 +8,7 @@ import scipy.io as sio
 import exchange as E
 import fake_exchange as FE
 import forecaster as F
+import portfolio as P
 
 
 class Manager:
@@ -34,17 +35,11 @@ class Manager:
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
         self.threshold_buy_ratio = 3  # percent expected gain
-        self.threshold_sell_ratio = -8  # percent expected loss
+        self.threshold_sell_ratio = -5  # percent expected loss
         self.buy_value = 5  # euros
 
-        self.total_liquid_funds = self.exchange.get_liquid_funds()
-        num_coin_types = len(self.list_of_coin_types)
-        self.current_values = np.full(num_coin_types, np.nan)
-        # Loop through all coins and get value
-        for idx, coin_type in enumerate(self.list_of_coin_types):
-            self.current_values[idx] = self.exchange.value_coin_holding(coin_type)
-
-        print('Current portfolio value: ' + str(self.total_liquid_funds + np.sum(self.current_values)) + ' euros')
+        # for working out how well we're doing
+        self.portfolio = P.Portfolio(self.exchange)
 
     def trade(self):
         # get current timestamp and get future timestamp for prediction
@@ -53,9 +48,7 @@ class Manager:
         future_time = now + prediction_time
 
         # How much haven have we got?
-        past_liquid_funds = self.total_liquid_funds
-        self.total_liquid_funds = self.exchange.get_liquid_funds()
-        total_liquid_funds = self.total_liquid_funds # decrement this otherwise past valuation is wrong
+        total_liquid_funds = self.exchange.get_liquid_funds()
 
         # instantiate containers for current / future values
         num_coin_types = len(self.list_of_coin_types)
@@ -69,23 +62,6 @@ class Manager:
             future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
             current_prices[idx] = self.exchange.get_price(now, coin_type)
             num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
-
-        # Portfolio snapshot
-        past_values = self.current_values
-        past_portfolio_value = np.sum(past_values) + past_liquid_funds
-
-        self.current_values = np.multiply(current_prices, num_coins_held)
-        current_portfolio_value = np.sum(self.current_values) + self.total_liquid_funds
-
-        relative_change_per_coin = 100 * np.divide(self.current_values - past_values, past_values)
-        relative_change = 100 * (current_portfolio_value - past_portfolio_value) / past_portfolio_value
-
-        print('Current portfolio value: ' + str(current_portfolio_value) + ' ; ' + str(relative_change) + ' %')
-        print("Coins are " + str(self.list_of_coin_types))
-        print("Current holding: " + str(self.current_values).strip('[]'))
-        print("Previous holding: " + str(past_values).strip('[]'))
-        print("Relative change: " + str(relative_change_per_coin).strip('[]'))
-        print('')
 
         # Calculate price gradient
         print("Coins are " + str(self.list_of_coin_types))
@@ -169,6 +145,9 @@ class Manager:
             # Execute "buy" orders
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
+        # return True if any trade
+        return any(flag_buy_coin) or any(flag_sell_coin)
+
     def stop_trading(self):
         # 1) fetch all open orders
         # 2) cancel all open orders
@@ -204,6 +183,9 @@ class Manager:
             # concat will set nan all unpopulated df values .e.g ID
             transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
         return transactions_to_make
+
+    def calculate_return(self):
+        self.portfolio.calculate_return(self.exchange)
 
     def get_list_of_coin_types(self, id_coin_types_to_get):
         list_of_coin_types = [self.list_of_coin_types[i] for i in id_coin_types_to_get]

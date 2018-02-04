@@ -26,9 +26,6 @@ class Exchange:
         #   If the exchange doesn't return a price, we wait and query again this many times before giving up.
         self.num_exchange_query_tolerance = 5
 
-        # trades = binance.fetch_my_trades('BTC/USDT') - get transaction
-        # markets = binance.fetch_markets() - get coin types
-
     def place_order(self, df_transaction, price=np.nan):
         # place order, then update transaction_id.
         # price to be used if we don't want market rate and instead want to place a limit order
@@ -185,6 +182,31 @@ class Exchange:
         price_per_coin = self.get_price(now, coin_type)
         return num_coins * price_per_coin
 
+    def value_portfolio(self, portfolio):
+        portfolio.current_liquid_funds = self.get_liquid_funds()
+        num_attempts = 0
+        while num_attempts < self.num_exchange_query_tolerance:
+            try:
+                balance = self.marketplace.fetch_balance()
+                balance = balance['free']
+                coins_held = [[coin_type, balance[coin_type]] for coin_type in balance if balance[coin_type] > 0]
+                total_value_held = 0
+                while coins_held:
+                    # Remove coin from the list (while loop ends at empty list)
+                    coin_held = coins_held.pop()
+                    coin_type_held = coin_held[0]
+                    num_coin_held = coin_held[1]
+                    value_coin_held = self.value_coin_holding(coin_type_held)
+                    total_value_held += value_coin_held
+                    portfolio.current_holdings[coin_type_held] = {'num': num_coin_held, 'val': value_coin_held}
+
+                print('Current portfolio value: ' + "{:.2f}".format(total_value_held) + ' euros')
+                return
+            except:
+                num_attempts += 1
+
+        raise Exception("ERROR: Unable to value portfolio!")
+
     def num_coin_holding(self, coin_type):
         # net of buffer we need to keep
         num_attempts = 0
@@ -203,10 +225,12 @@ class Exchange:
                     coin_resolution = self.marketplace.markets[coin_pair]['lot']
                     coin_balance = np.minimum(coin_balance, coin_max_limit)
                     coin_balance = np.floor(coin_balance / coin_resolution) * coin_resolution
+
                 return coin_balance
             except:
                 num_attempts += 1
-        print('ERROR: num_coin_holding ; unable to get value from exchange')
+
+        print('ERROR: Unable to get number of ' + coin_type + ' from exchange')
         return 0
 
     def get_liquid_funds(self):

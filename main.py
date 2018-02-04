@@ -3,16 +3,20 @@ import keyboard
 import manager as M
 import numpy as np
 
-tAutotraderWait = 15  # seconds
+tAutotraderWait = 180  # seconds
 flag_fake_exchange = True
 
 Autotrader = M.Manager(flag_fake_exchange)
 
 BRun = True
 while BRun:
-    Autotrader.trade()
+    flag_calculate_return = Autotrader.trade()
+    print('')
     print('making loads')
     print('')
+    if flag_calculate_return:
+        Autotrader.calculate_return()
+
     for idx in range(0, int(tAutotraderWait)):
         time_remaining = int(tAutotraderWait) - idx
         if not np.mod(time_remaining, 5):
