@@ -12,6 +12,7 @@ class FakeExchange(exchange.Exchange):
         portfolio = P.Portfolio(self)
         # Set fake marketplace
         self.marketplace = fake_binance.FakeBinance()
+        self.marketplace.load_markets(True)
         # We can populate fake_binance from the portfolio:-)
         print('Populating fake exchange from real exchange...')
         self.marketplace.populate_from_portfolio(portfolio)

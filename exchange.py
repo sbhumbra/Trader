@@ -189,7 +189,8 @@ class Exchange:
             try:
                 balance = self.marketplace.fetch_balance()
                 balance = balance['free']
-                coins_held = [[coin_type, balance[coin_type]] for coin_type in balance if balance[coin_type] > 0]
+                coins_held = [[coin_type, balance[coin_type]] for coin_type in balance if
+                              balance[coin_type] > 0 and not coin_type == 'GAS']
                 total_value_held = 0
                 while coins_held:
                     # Remove coin from the list (while loop ends at empty list)

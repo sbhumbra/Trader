@@ -78,10 +78,10 @@ class FakeBinance(ccxt.binance):
         return self.fake_balance
 
     def increase_coin_holding(self, coin_type, amount):
-        self.coin_holdings[coin_type]['free'] += amount
+        self.fake_balance[coin_type]['free'] += amount
 
     def decrease_coin_holding(self, coin_type, amount):
-        if self.coin_holdings[coin_type]['free'] < amount:
+        if self.fake_balance[coin_type]['free'] < amount:
             raise ccxt.errors.InsufficientFunds
 
-        self.coin_holdings[coin_type]['free'] -= amount
+        self.fake_balance[coin_type]['free'] -= amount
