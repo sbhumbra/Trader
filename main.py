@@ -4,7 +4,7 @@ import manager as M
 import numpy as np
 
 tAutotraderWait = 180  # seconds
-flag_fake_exchange = True
+flag_fake_exchange = False
 
 Autotrader = M.Manager(flag_fake_exchange)
 

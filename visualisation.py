@@ -8,8 +8,8 @@ import manager as M
 
 A = M.Manager()
 coin_type = 'ETH'
-num_iterations = 100
-time_sleep = 0.5
+num_iterations = 200
+time_sleep = 0.1
 
 iteration_interval = 3 * 60
 forecasting_backwards_window = 15 * 60
@@ -21,10 +21,11 @@ plot_gap = 3 * 60 * 60  # seconds, backwards from now
 forecast_gap = 2 * 60 * 60  # seconds, backwards from now (time forecaster evaluated)
 forecast_time = plot_gap - forecast_gap  # seconds, forwards from zero (time forecaster evaluated)
 
-time_begin_default = 1517661364  # use this for repeatable testing
+time_begin_default = 1517361364  # use this for repeatable testing (flat market)
+
 latest_time = int(time.time())
 # need to make sure we don't go into the future...
-time_begin = latest_time + forecast_time - (num_iterations * iteration_interval)
+time_begin = time_begin_default + forecast_time - (num_iterations * iteration_interval)
 
 plt.figure(1)
 title = plt.suptitle(coin_type)
