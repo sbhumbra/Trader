@@ -34,8 +34,8 @@ class Manager:
         self.forecaster = F.Forecaster(self.exchange)
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy_ratio = 3  # percent expected gain
-        self.threshold_sell_ratio = -5  # percent expected loss
+        self.threshold_buy_ratio = 3  # percent expected
+        self.threshold_sell_ratio = 0.5  # percent expected (-ive for loss) - sell at low gain to pre-empt fall
         self.buy_value = 5  # euros
 
         # for working out how well we're doing
@@ -44,8 +44,9 @@ class Manager:
     def trade(self):
         # get current timestamp and get future timestamp for prediction
         now = int(time.time())
-        prediction_time = 60 * 60  # seconds
+        prediction_time = 15 * 60  # seconds
         future_time = now + prediction_time
+        past_time = now - prediction_time
 
         # How much haven have we got?
         total_liquid_funds = self.exchange.get_liquid_funds()
@@ -53,12 +54,14 @@ class Manager:
         # instantiate containers for current / future values
         num_coin_types = len(self.list_of_coin_types)
         coin_ids = (np.linspace(1, num_coin_types, num_coin_types) - 1).astype('int')
+        past_prices = np.full(num_coin_types, np.nan)
         future_prices = np.full(num_coin_types, np.nan)
         current_prices = np.full(num_coin_types, np.nan)
         num_coins_held = np.full(num_coin_types, np.nan)
 
         # Loop through all coins and calc current / future prices and number held
         for idx, coin_type in enumerate(self.list_of_coin_types):
+            past_prices[idx] = self.exchange.get_price(past_time, coin_type)
             future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
             current_prices[idx] = self.exchange.get_price(now, coin_type)
             num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
@@ -69,11 +72,13 @@ class Manager:
         print("We think future prices are " + str(future_prices).strip('[]'))
         print('')
         price_gradient = np.asarray(100 * np.divide((future_prices - current_prices), current_prices))  # percent
+        past_price_gradient = np.asarray(100 * np.divide((current_prices - past_prices), past_prices))  # percent
 
         # SELL COINS
         # Selling frees up funds for buying...
         # Sell anything that's performing worse than threshold and that we own enough of
-        flag_loss = np.less(price_gradient, self.threshold_sell_ratio)
+        flag_loss = np.logical_and(np.less(past_price_gradient, self.threshold_sell_ratio),
+                                   np.less(price_gradient, past_price_gradient))
         flag_have_coin = np.greater(num_coins_held, 0)
         flag_sell_coin = np.logical_and(flag_loss, flag_have_coin)
 
@@ -100,7 +105,8 @@ class Manager:
 
         # BUY COINS
         # Buy anything that's performing better than threshold and that we can afford
-        flag_gain = np.greater(price_gradient, self.threshold_buy_ratio)
+        flag_gain = np.logical_and(np.greater(past_price_gradient, self.threshold_buy_ratio),
+                                   np.greater(price_gradient, past_price_gradient))
         flag_have_money_to_spend = np.greater(total_liquid_funds, 0)
         flag_buy_coin = np.logical_and(flag_gain, flag_have_money_to_spend)
 

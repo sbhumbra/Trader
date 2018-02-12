@@ -1,8 +1,10 @@
 import time
-import manager as M
-import numpy as np
+
 import matplotlib.pyplot as plt
+import numpy as np
 from scipy.interpolate import interp1d
+
+import manager as M
 
 A = M.Manager()
 coin_type = 'ETH'
@@ -11,7 +13,7 @@ time_sleep = 0.5
 
 iteration_interval = 3 * 60
 forecasting_backwards_window = 15 * 60
-forecasting_prediction_window = 60 * 60
+forecasting_prediction_window = 15 * 60
 
 plot_margin_price = 0.1  # +/- 10% on max/min price in plot
 plot_margin_error = 2  # +/- on min/min error in plot

@@ -15,7 +15,7 @@ class Forecaster:
         current_price = self.exchange.get_price(now, coin_type)
 
         # How far backwards in time do we go?
-        time_backwards = 20 * 60
+        time_backwards = 15 * 60
 
         # Get delta time between future and now
         dt = int(timestamp) - now
@@ -25,11 +25,12 @@ class Forecaster:
 
         # Create time axis (1 minute spacing) for fit
         num_points = len(price_history)
-        time_axis = np.linspace(0,(num_points-1)*60,num_points)
+        time_axis = np.linspace(0, (num_points - 1) * 60, num_points)
 
         # Linear fit
-        coeff = np.polyfit(time_axis,price_history,1)
+        coeff, residuals, _, _, _ = np.polyfit(time_axis, price_history, 1, full=True)
         dprice_dt = coeff[0]
+        residuals = residuals[0]
 
         # Linear extrapolation to get future price
         future_price = current_price + dprice_dt * dt
