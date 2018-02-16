@@ -7,11 +7,7 @@ class Forecaster:
     def __init__(self, exchange):
         self.exchange = exchange
 
-    def forecast(self, coin_type, future_timestamp, now_timestamp=np.nan):
-        # What is the current time?
-        if np.isnan(now_timestamp):
-            now_timestamp = int(time.time())
-
+    def forecast(self, coin_type, future_timestamp, now_timestamp):
         # Get current price
         current_price = self.exchange.get_price(now_timestamp, coin_type)
 

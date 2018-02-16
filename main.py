@@ -4,18 +4,19 @@ import manager as M
 import numpy as np
 
 tAutotraderWait = 180  # seconds
-flag_fake_exchange = False
+flag_fake_exchange = True
 
-Autotrader = M.Manager(flag_fake_exchange)
+Autotrader = M.Manager(int(time.time()),flag_fake_exchange)
 
 BRun = True
 while BRun:
-    flag_calculate_return = Autotrader.trade()
+    now = int(time.time())
+    flag_calculate_return = Autotrader.trade(now)
     print('')
     print('making loads')
     print('')
     if flag_calculate_return:
-        Autotrader.calculate_return()
+        Autotrader.calculate_return(now)
 
     for idx in range(0, int(tAutotraderWait)):
         time_remaining = int(tAutotraderWait) - idx
@@ -33,5 +34,5 @@ while BRun:
 # cash out
 Autotrader.threshold_buy_ratio = 1000
 Autotrader.threshold_sell_ratio = 500
-Autotrader.trade()
+Autotrader.trade(int(time.time()))
 Autotrader.stop_trading()

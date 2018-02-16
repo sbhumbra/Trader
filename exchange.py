@@ -176,14 +176,13 @@ class Exchange:
                     print('WARNING: exchange query failed, re-attempting')
                     time.sleep(1)
 
-    def value_coin_holding(self, coin_type):
-        now = int(time.time())
+    def value_coin_holding(self, timestamp, coin_type):
         num_coins = self.num_coin_holding(coin_type)
-        price_per_coin = self.get_price(now, coin_type)
+        price_per_coin = self.get_price(timestamp, coin_type)
         return num_coins * price_per_coin
 
-    def value_portfolio(self, portfolio):
-        portfolio.current_liquid_funds = self.get_liquid_funds()
+    def value_portfolio(self, timestamp, portfolio):
+        portfolio.current_liquid_funds = self.get_liquid_funds(timestamp)
         num_attempts = 0
         while num_attempts < self.num_exchange_query_tolerance:
             try:
@@ -197,7 +196,7 @@ class Exchange:
                     coin_held = coins_held.pop()
                     coin_type_held = coin_held[0]
                     num_coin_held = coin_held[1]
-                    value_coin_held = self.value_coin_holding(coin_type_held)
+                    value_coin_held = self.value_coin_holding(timestamp, coin_type_held)
                     total_value_held += value_coin_held
                     portfolio.current_holdings[coin_type_held] = {'num': num_coin_held, 'val': value_coin_held}
 
@@ -234,7 +233,7 @@ class Exchange:
         print('ERROR: Unable to get number of ' + coin_type + ' from exchange')
         return 0
 
-    def get_liquid_funds(self):
-        total_liquid_funds = self.value_coin_holding(self.haven_coin_type)
+    def get_liquid_funds(self, timestamp):
+        total_liquid_funds = self.value_coin_holding(timestamp, self.haven_coin_type)
         print('Total liquid funds (Haven/EUR): ' + str(total_liquid_funds))
         return total_liquid_funds

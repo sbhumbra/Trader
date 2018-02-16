@@ -12,7 +12,7 @@ import portfolio as P
 
 
 class Manager:
-    def __init__(self, flag_fake_exchange=False):
+    def __init__(self, timestamp, flag_fake_exchange=False):
         # Exchange abstracts conversions so these coins need not go directly to Haven (USDT)
         # coins tradeable with USDT on binance
         # can get this from exchange
@@ -25,7 +25,7 @@ class Manager:
 
         # robust wrapper for placing / querying / cancelling orders & getting prices
         if flag_fake_exchange:
-            self.exchange = FE.FakeExchange(marketplace=binance,
+            self.exchange = FE.FakeExchange(timestamp, marketplace=binance,
                                             haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
         else:
             self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
@@ -41,17 +41,17 @@ class Manager:
         self.buy_value = 5  # euros
 
         # for working out how well we're doing
-        self.portfolio = P.Portfolio(self.exchange)
+        self.portfolio = P.Portfolio(timestamp, self.exchange)
 
-    def trade(self):
+    def trade(self, timestamp):
         # get current timestamp and get future timestamp for prediction
-        now = int(time.time())
+        now = timestamp  # for Luca
         prediction_time = 15 * 60  # seconds
         future_time = now + prediction_time
         past_time = now - prediction_time
 
         # How much haven have we got?
-        total_liquid_funds = self.exchange.get_liquid_funds()
+        total_liquid_funds = self.exchange.get_liquid_funds(now)
 
         # instantiate containers for current / future values
         num_coin_types = len(self.list_of_coin_types)
@@ -64,7 +64,7 @@ class Manager:
         # Loop through all coins and calc current / future prices and number held
         for idx, coin_type in enumerate(self.list_of_coin_types):
             past_prices[idx] = self.exchange.get_price(past_time, coin_type)
-            future_prices[idx] = self.forecaster.forecast(coin_type, future_time)
+            future_prices[idx] = self.forecaster.forecast(coin_type, future_time, now)
             current_prices[idx] = self.forecaster.forecast(coin_type, now, past_time)
             num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
 
@@ -79,8 +79,8 @@ class Manager:
         # SELL COINS
         # Selling frees up funds for buying...
         # Sell anything that's performing worse than threshold and that we own enough of
-        flag_loss = np.logical_or(np.less(price_gradient-past_price_gradient, self.threshold_sell_ratio),
-                                   np.less(price_gradient, self.threshold_sell_ratio_2))
+        flag_loss = np.logical_or(np.less(price_gradient - past_price_gradient, self.threshold_sell_ratio),
+                                  np.less(price_gradient, self.threshold_sell_ratio_2))
         flag_have_coin = np.greater(num_coins_held, 0)
         flag_sell_coin = np.logical_and(flag_loss, flag_have_coin)
 
@@ -96,7 +96,7 @@ class Manager:
             number_of_coins_to_sell = np.full(num_coin_types_to_sell, np.nan)
             for idx, coin_type in enumerate(list_of_coin_types_to_sell):
                 # TODO: calculate number of coins to sell instead of selling all?
-                number_of_coins_to_sell[idx] = self.exchange.num_coin_holding(coin_type)/4
+                number_of_coins_to_sell[idx] = self.exchange.num_coin_holding(coin_type)
 
             # "Sell" orders
             transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_sell,
@@ -108,7 +108,7 @@ class Manager:
         # BUY COINS
         # Buy anything that's performing better than threshold and that we can afford
         flag_gain = np.logical_or(np.greater(price_gradient - past_price_gradient, self.threshold_buy_ratio),
-                                   np.greater(price_gradient, self.threshold_buy_ratio_2))
+                                  np.greater(price_gradient, self.threshold_buy_ratio_2))
         flag_have_money_to_spend = np.greater(total_liquid_funds, 0)
         flag_buy_coin = np.logical_and(flag_gain, flag_have_money_to_spend)
 
@@ -192,8 +192,8 @@ class Manager:
             transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
         return transactions_to_make
 
-    def calculate_return(self):
-        self.portfolio.calculate_return(self.exchange)
+    def calculate_return(self, timestamp):
+        self.portfolio.calculate_return(timestamp, self.exchange)
 
     def get_list_of_coin_types(self, id_coin_types_to_get):
         list_of_coin_types = [self.list_of_coin_types[i] for i in id_coin_types_to_get]
