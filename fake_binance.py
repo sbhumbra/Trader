@@ -10,6 +10,10 @@ class FakeBinance(ccxt.binance):
         #   Track number of coins held
         self.fake_balance = {}
         self.fake_balance['free'] = {}
+
+        self.cache = {}
+        self.cache_width = 60
+
         d = self.describe()
         self.buy_fee = d['fees']['trading']['taker']
         self.sell_fee = d['fees']['trading']['maker']
@@ -26,6 +30,24 @@ class FakeBinance(ccxt.binance):
             print(coin_held)
             self.fake_balance['free'][coin_held[0]] = coin_held[1]['num']
             self.fake_balance[coin_held[0]] = {'free': coin_held[1]['num']}
+
+    def fetch_ohlcv(self, symbol, timeframe='1m', since=None, limit=None, params={}):
+        key = symbol + timeframe  # blame Luca
+        try:
+            cached_candles = self.cache[key]
+
+            if cached_candles[0][0] > since:
+                raise Exception
+
+            cached_section = [candle for candle in cached_candles if candle[0] >= since]
+
+            if len(cached_section) < self.cache_width:
+                raise Exception
+
+            return [candle for candle in cached_candles if candle[0] >= since]
+        except:
+            self.cache[key] = super(FakeBinance, self).fetch_ohlcv(symbol, timeframe, since)
+            return self.cache[key]
 
     def create_market_buy_order(self, symbol, amount, params=None):
         coin_type_bought = symbol.split('/')[0]  # left side, e.g. 'NEO','BNB',...
