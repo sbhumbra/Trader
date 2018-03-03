@@ -1,5 +1,3 @@
-import time
-
 import numpy as np
 
 
@@ -7,7 +5,7 @@ class Forecaster:
     def __init__(self, exchange):
         self.exchange = exchange
 
-    def forecast(self, coin_type, future_timestamp, now_timestamp):
+    def forecast(self, coin_type, now_timestamp, future_timestamp):
         # Get current price
         current_price = self.exchange.get_price(now_timestamp, coin_type)
 

@@ -9,14 +9,20 @@ import exchange as E
 import fake_exchange as FE
 import forecaster as F
 import portfolio as P
+import coin as C
 
 
 class Manager:
     def __init__(self, timestamp, flag_fake_exchange=False):
-        # Exchange abstracts conversions so these coins need not go directly to Haven (USDT)
-        # coins tradeable with USDT on binance
-        # can get this from exchange
+        # Coin info
+        # These coins are tradeable with USDT on binance
         self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
+        num_coin_types = len(self.list_of_coin_types)
+        self.coin_ids = (np.linspace(1, num_coin_types, num_coin_types) - 1).astype('int')
+
+        self.coins = {}
+        for coin_type in self.list_of_coin_types:
+            self.coins[coin_type] = C.Coin(coin_type)
 
         binance = ccxt.binance()
         mat_file = sio.loadmat("api_things.mat")
@@ -53,28 +59,37 @@ class Manager:
         # How much haven have we got?
         total_liquid_funds = self.exchange.get_liquid_funds(now)
 
-        # instantiate containers for current / future values
+        # temp bollocks...
         num_coin_types = len(self.list_of_coin_types)
-        coin_ids = (np.linspace(1, num_coin_types, num_coin_types) - 1).astype('int')
-        past_prices = np.full(num_coin_types, np.nan)
-        future_prices = np.full(num_coin_types, np.nan)
-        current_prices = np.full(num_coin_types, np.nan)
         num_coins_held = np.full(num_coin_types, np.nan)
+        current_prices = np.full(num_coin_types, np.nan)
+        future_prices = np.full(num_coin_types, np.nan)
+        price_gradient = np.full(num_coin_types, np.nan)
+        past_price_gradient = np.full(num_coin_types, np.nan)
 
-        # Loop through all coins and calc current / future prices and number held
+        # For each coin:
+        #   Get current price and number held
+        #   Forecast future price, calculating current price gradient
+        #   Calculate past price gradient
         for idx, coin_type in enumerate(self.list_of_coin_types):
-            past_prices[idx] = self.exchange.get_price(past_time, coin_type)
-            future_prices[idx] = self.forecaster.forecast(coin_type, future_time, now)
-            current_prices[idx] = self.forecaster.forecast(coin_type, now, past_time)
-            num_coins_held[idx] = self.exchange.num_coin_holding(coin_type)
+            self.coins[coin_type].update_num_coin_held(self.exchange)
+            self.coins[coin_type].update_current_price(self.exchange, now)
+            self.coins[coin_type].forecast_future_price(self.forecaster, now, future_time)
+            self.coins[coin_type].calculate_past_price_gradient(self.exchange, past_time, prediction_time)
+            # temp bollocks...
+            num_coins_held[idx] = self.coins[coin_type].num_coin_held
+            current_prices[idx] = self.coins[coin_type].current_price
+            future_prices[idx] = self.coins[coin_type].future_price
+            price_gradient[idx] = self.coins[coin_type].current_price_gradient
+            past_price_gradient[idx] = self.coins[coin_type].past_price_gradient
 
-        # Calculate price gradient
+        # price_gradient = np.asarray(100 * np.divide((future_prices - current_prices), current_prices))  # percent
+        # past_price_gradient = np.asarray(100 * np.divide((current_prices - past_prices), past_prices))  # percent
+
         print("Coins are " + str(self.list_of_coin_types))
         print("Current prices are " + str(current_prices).strip('[]'))
         print("We think future prices are " + str(future_prices).strip('[]'))
         print('')
-        price_gradient = np.asarray(100 * np.divide((future_prices - current_prices), current_prices))  # percent
-        past_price_gradient = np.asarray(100 * np.divide((current_prices - past_prices), past_prices))  # percent
 
         # SELL COINS
         # Selling frees up funds for buying...
@@ -88,7 +103,7 @@ class Manager:
             print("Selling coinage...")
             print('')
 
-            id_coin_types_to_sell = coin_ids[flag_sell_coin]
+            id_coin_types_to_sell = self.coin_ids[flag_sell_coin]
             list_of_coin_types_to_sell = self.get_list_of_coin_types(id_coin_types_to_sell)
 
             # How much of each coin should we sell?
@@ -116,7 +131,7 @@ class Manager:
             print("Buying coinage...")
             print('')
 
-            id_coin_types_to_buy = coin_ids[flag_buy_coin]
+            id_coin_types_to_buy = self.coin_ids[flag_buy_coin]
             sufficient_price_gradient = price_gradient[flag_buy_coin]
 
             # Order coins from most profit to least profit
