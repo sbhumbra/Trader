@@ -33,4 +33,4 @@ class Coin:
         past_price_gradient = coeff[0]  # dPrice/dt
         avg_past_price = coeff[1]  # since time origin is 0
 
-        self.past_price_gradient = 100 * past_price_gradient / avg_past_price  # %
+        self.past_price_gradient = 100 * (past_price_gradient * time_window) / avg_past_price  # % = (($/t)*t)/$

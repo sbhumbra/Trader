@@ -2,21 +2,21 @@ import numpy as np
 
 
 class Forecaster:
-    def __init__(self, exchange):
+    def __init__(self, exchange, backsampling_time):
         self.exchange = exchange
+
+        # How far backwards in time do we go?
+        self.backsampling_time = backsampling_time
 
     def forecast(self, coin_type, now_timestamp, future_timestamp):
         # Get current price
         current_price = self.exchange.get_price(now_timestamp, coin_type)
 
-        # How far backwards in time do we go?
-        time_backwards = 15 * 60
-
         # Get delta time between future and now
         dt = int(future_timestamp) - now_timestamp
 
         # Get history of past prices
-        price_history = self.exchange.get_price(now_timestamp - time_backwards, coin_type, now_timestamp)
+        price_history = self.exchange.get_price(now_timestamp - self.backsampling_time, coin_type, now_timestamp)
 
         # Create time axis (1 minute spacing) for fit
         num_points = len(price_history)

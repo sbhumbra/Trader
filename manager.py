@@ -36,15 +36,17 @@ class Manager:
         else:
             self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
 
-        # for predicting future prices / exchange rates
-        self.forecaster = F.Forecaster(self.exchange)
-
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy_ratio = 0.5  # percent expected
-        self.threshold_buy_ratio_2 = 2
-        self.threshold_sell_ratio = -0.5  # percent expected (-ive for loss) - sell at low gain to pre-empt fall
-        self.threshold_sell_ratio_2 = -2
+        self.threshold_buy_ratio = -10#0.5  # percent expected
+        self.threshold_buy_ratio_2 = -10#2
+        self.threshold_sell_ratio = 10#-0.5  # percent expected (-ive for loss) - sell at low gain to pre-empt fall
+        self.threshold_sell_ratio_2 = 10#-2
         self.buy_value = 5  # euros
+        self.prediction_time = 15 * 60  # seconds
+        self.backsampling_time = 15 * 60  # seconds
+
+        # for predicting future prices / exchange rates
+        self.forecaster = F.Forecaster(self.exchange, self.backsampling_time)
 
         # for working out how well we're doing
         self.portfolio = P.Portfolio(timestamp, self.exchange)
@@ -52,124 +54,47 @@ class Manager:
     def trade(self, timestamp):
         # get current timestamp and get future timestamp for prediction
         now = timestamp  # for Luca
-        prediction_time = 15 * 60  # seconds
-        future_time = now + prediction_time
-        past_time = now - prediction_time
+        future_time = now + self.prediction_time
+        past_time = now - self.backsampling_time
+
+        # Update all coin info: amount held, current price, future price, past gradient...
+        self.check_coins(now, future_time, past_time)
+
+        # Decide which coins to sell and which to buy
+        # Lists are in descending priority order
+        (coins_to_sell, coins_to_buy) = self.choose_trades()
+
+        flag_any_sells = len(coins_to_sell) > 0
+        flag_any_buys = len(coins_to_buy) > 0
+
+        if flag_any_sells:
+            print("Selling coinage...")
+            print('')
+            # Calculate amounts to sell, create orders and execute
+            self.set_sell_amounts(coins_to_sell)
+            transactions_to_make = self.list_transactions_to_make(coins_to_sell, 'sell')
+            self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
         # How much haven have we got?
         total_liquid_funds = self.exchange.get_liquid_funds(now)
 
-        # temp bollocks...
-        num_coin_types = len(self.list_of_coin_types)
-        num_coins_held = np.full(num_coin_types, np.nan)
-        current_prices = np.full(num_coin_types, np.nan)
-        future_prices = np.full(num_coin_types, np.nan)
-        price_gradient = np.full(num_coin_types, np.nan)
-        past_price_gradient = np.full(num_coin_types, np.nan)
-
-        # For each coin:
-        #   Get current price and number held
-        #   Forecast future price, calculating current price gradient
-        #   Calculate past price gradient
-        for idx, coin_type in enumerate(self.list_of_coin_types):
-            self.coins[coin_type].update_num_coin_held(self.exchange)
-            self.coins[coin_type].update_current_price(self.exchange, now)
-            self.coins[coin_type].forecast_future_price(self.forecaster, now, future_time)
-            self.coins[coin_type].calculate_past_price_gradient(self.exchange, past_time, prediction_time)
-            # temp bollocks...
-            num_coins_held[idx] = self.coins[coin_type].num_coin_held
-            current_prices[idx] = self.coins[coin_type].current_price
-            future_prices[idx] = self.coins[coin_type].future_price
-            price_gradient[idx] = self.coins[coin_type].current_price_gradient
-            past_price_gradient[idx] = self.coins[coin_type].past_price_gradient
-
-        # price_gradient = np.asarray(100 * np.divide((future_prices - current_prices), current_prices))  # percent
-        # past_price_gradient = np.asarray(100 * np.divide((current_prices - past_prices), past_prices))  # percent
-
-        print("Coins are " + str(self.list_of_coin_types))
-        print("Current prices are " + str(current_prices).strip('[]'))
-        print("We think future prices are " + str(future_prices).strip('[]'))
-        print('')
-
-        # SELL COINS
-        # Selling frees up funds for buying...
-        # Sell anything that's performing worse than threshold and that we own enough of
-        flag_loss = np.logical_or(np.less(price_gradient - past_price_gradient, self.threshold_sell_ratio),
-                                  np.less(price_gradient, self.threshold_sell_ratio_2))
-        flag_have_coin = np.greater(num_coins_held, 0)
-        flag_sell_coin = np.logical_and(flag_loss, flag_have_coin)
-
-        if any(flag_sell_coin):
-            print("Selling coinage...")
-            print('')
-
-            id_coin_types_to_sell = self.coin_ids[flag_sell_coin]
-            list_of_coin_types_to_sell = self.get_list_of_coin_types(id_coin_types_to_sell)
-
-            # How much of each coin should we sell?
-            num_coin_types_to_sell = len(list_of_coin_types_to_sell)
-            number_of_coins_to_sell = np.full(num_coin_types_to_sell, np.nan)
-            for idx, coin_type in enumerate(list_of_coin_types_to_sell):
-                # TODO: calculate number of coins to sell instead of selling all?
-                number_of_coins_to_sell[idx] = self.exchange.num_coin_holding(coin_type)
-
-            # "Sell" orders
-            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_sell,
-                                                                  number_of_coins_to_sell, 'sell')
-
-            # Execute "sell" orders
-            self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
-
-        # BUY COINS
-        # Buy anything that's performing better than threshold and that we can afford
-        flag_gain = np.logical_or(np.greater(price_gradient - past_price_gradient, self.threshold_buy_ratio),
-                                  np.greater(price_gradient, self.threshold_buy_ratio_2))
-        flag_have_money_to_spend = np.greater(total_liquid_funds, 0)
-        flag_buy_coin = np.logical_and(flag_gain, flag_have_money_to_spend)
-
-        if any(flag_buy_coin):
+        if flag_any_buys and np.greater(total_liquid_funds, 0):
             print("Buying coinage...")
             print('')
-
-            id_coin_types_to_buy = self.coin_ids[flag_buy_coin]
-            sufficient_price_gradient = price_gradient[flag_buy_coin]
-
-            # Order coins from most profit to least profit
-            # This sorts in ascending (not optional), therefore -1 for descending
-            id_priority = np.argsort(-1 * sufficient_price_gradient)
-            id_priority_coin_types_to_buy = id_coin_types_to_buy[id_priority].astype('int')
-            price_gradient_sorted = sufficient_price_gradient[id_priority]
-
-            # Get ordered list of coins to buy
-            list_of_coin_types_to_buy = self.get_list_of_coin_types(id_priority_coin_types_to_buy)
-
-            # How much of each coin do we buy?
-            num_coin_types_to_buy = len(list_of_coin_types_to_buy)
-            num_coin_to_buy = np.full(num_coin_types_to_buy, np.nan)
-
-            for idx, coin_type in enumerate(list_of_coin_types_to_buy):
-                funds_to_spend = np.minimum(self.buy_value, total_liquid_funds)
-                num_coin_to_buy[idx] = funds_to_spend / self.exchange.get_price(now, coin_type)
-                total_liquid_funds -= funds_to_spend
-                print('Buying ' + str(num_coin_to_buy[idx]) + ' ' + coin_type + ' for expected profit of '
-                      + str(price_gradient_sorted[idx]) + ' percent gainz')
-                if total_liquid_funds == 0:
-                    break
-
-            id_coins_cannot_afford = np.isnan(num_coin_to_buy)
-
-            num_coin_to_buy = num_coin_to_buy[np.logical_not(id_coins_cannot_afford)]
-            list_of_coin_types_to_buy = list_of_coin_types_to_buy[np.logical_not(id_coins_cannot_afford)]
-
-            # "Buy" orders
-            transactions_to_make = self.list_transactions_to_make(list_of_coin_types_to_buy,
-                                                                  num_coin_to_buy, 'buy')
-
-            # Execute "buy" orders
+            # Calculate amounts to buy, create orders and execute
+            # If we run out of money while making buy orders then
+            # some coins won't have a buy amount associated with them; we take
+            # only the ones that do.
+            self.set_buy_amounts(coins_to_buy, total_liquid_funds, now)
+            coins_to_buy = [c for c in coins_to_buy if len(c) == 2]
+            transactions_to_make = self.list_transactions_to_make(coins_to_buy, 'buy')
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
+        # Update all coin plots
+        self.update_coin_plots()
+
         # return True if any trade
-        return any(flag_buy_coin) or any(flag_sell_coin)
+        return flag_any_sells or flag_any_buys
 
     def stop_trading(self):
         # 1) fetch all open orders
@@ -194,14 +119,15 @@ class Manager:
         if not orders_completed:
             self.exchange.cancel_order(df_transactions_to_make)
 
-    def list_transactions_to_make(self, coin_types_to_trade, transaction_amounts, transaction_type):
-
+    def list_transactions_to_make(self, coins_to_trade, transaction_type):
         transactions_to_make = pd.DataFrame(self.exchange.df_transaction_format)
 
-        for idx, coin_type in enumerate(coin_types_to_trade):
+        for coin_trade in coins_to_trade:
+            coin_type = coin_trade[0]
+            transaction_amount = coin_trade[1]
             coin_pair = coin_type + '/' + self.exchange.haven_coin_type
             transaction_to_make = pd.DataFrame(
-                data=[[coin_pair, transaction_amounts[idx], transaction_type]],
+                data=[[coin_pair, transaction_amount, transaction_type]],
                 columns=['coin_pair', 'transaction_amount', 'transaction_type'])
             # concat will set nan all unpopulated df values .e.g ID
             transactions_to_make = pd.concat([transactions_to_make, transaction_to_make], ignore_index=True)
@@ -209,7 +135,82 @@ class Manager:
 
     def calculate_return(self, timestamp):
         self.portfolio.calculate_return(timestamp, self.exchange)
+        # Update portfolio plot
+        self.update_portfolio_plot()
 
-    def get_list_of_coin_types(self, id_coin_types_to_get):
-        list_of_coin_types = [self.list_of_coin_types[i] for i in id_coin_types_to_get]
-        return np.array(list_of_coin_types)
+    def check_coins(self, now_timestamp, future_timestamp, past_timestamp):
+        # For each coin:
+        #   Get current price and number held
+        #   Forecast future price, calculating current price gradient
+        #   Calculate past price gradient
+        for coin_type in self.list_of_coin_types:
+            c = self.coins[coin_type]  # for reference
+            c.update_num_coin_held(self.exchange)
+            c.update_current_price(self.exchange, now_timestamp)
+            c.forecast_future_price(self.forecaster, now_timestamp, future_timestamp)
+            c.calculate_past_price_gradient(self.exchange, past_timestamp, self.backsampling_time)
+            print("Current price of " + coin_type + " is " + str(c.current_price))
+            print("Last change: " + str(c.past_price_gradient) + \
+                  " % ; Predicted change: " + str(c.current_price_gradient) + " %")
+            print("")
+
+    def choose_trades(self):
+        # Return two lists of coin_types, one to sell and the other to buy
+        # Lists are sorted in descending priority order
+        coins_to_sell = []
+        coins_to_buy = []
+
+        for coin_type in self.list_of_coin_types:
+            c = self.coins[coin_type]
+            change_in_gradient = c.current_price_gradient - c.past_price_gradient
+
+            # SELL anything that's performing worse than threshold and that we own enough of
+            flag_loss = np.logical_or(
+                np.less(change_in_gradient, self.threshold_sell_ratio),
+                np.less(c.current_price_gradient, self.threshold_sell_ratio_2))
+            flag_have_coin = np.greater(c.num_coin_held, 0)
+            if np.logical_and(flag_loss, flag_have_coin):
+                # No priorities here
+                coins_to_sell.append(coin_type)  # no priorities here
+                continue
+
+            # BUY anything that's performing better than threshold
+            flag_gain = np.logical_or(
+                np.greater(change_in_gradient, self.threshold_buy_ratio),
+                np.greater(c.current_price_gradient, self.threshold_buy_ratio_2))
+            if flag_gain:
+                # We want to sort by price gradient, so add this to the list for now
+                coins_to_buy.append((coin_type, c.current_price_gradient))
+
+        # This sorts coins_to_buy by numerical data (price gradient) in ascending order
+        coins_to_buy.sort()
+        # ... and now descending order
+        coins_to_buy.reverse()
+        # ... and now take only the coin_type
+        coins_to_buy = [c[0] for c in coins_to_buy]
+
+        return coins_to_sell, coins_to_buy
+
+    def set_sell_amounts(self, coins_to_sell):
+        # coins_to_sell modified by reference
+        # TODO: calculate amounts to sell instead of selling all?
+        for idx, coin_type in enumerate(coins_to_sell):
+            coins_to_sell[idx] = (coin_type, self.coins[coin_type].num_coin_held)
+
+    def set_buy_amounts(self, coins_to_buy, total_liquid_funds, now_timestamp):
+        # coins_to_buy modified by reference
+        for idx, coin_type in enumerate(coins_to_buy):
+            funds_to_spend = np.minimum(self.buy_value, total_liquid_funds)
+            buy_amount = funds_to_spend / self.coins[coin_type].current_price
+            coins_to_buy[idx] = (coin_type, buy_amount)
+            total_liquid_funds -= funds_to_spend
+            print('Buying ' + str(buy_amount) + ' ' + coin_type + ' for expected '
+                  + str(self.coins[coin_type].current_price_gradient) + ' % gainz')
+            if total_liquid_funds <= 0:
+                break
+
+    def update_coin_plots(self):
+        pass
+
+    def update_portfolio_plot(self):
+        pass
