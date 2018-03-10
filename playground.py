@@ -20,7 +20,8 @@ plot_gap = 3 * 60 * 60  # seconds, backwards from now
 forecast_gap = 2 * 60 * 60  # seconds, backwards from now (time forecaster evaluated)
 forecast_time = plot_gap - forecast_gap  # seconds, forwards from zero (time forecaster evaluated)
 
-time_begin_default = 1518305400 # use this for repeatable testing (flat market)
+time_begin_default = 1520708240-3600*24*3
+#1518305400 # use this for repeatable testing (flat market)
 
 latest_time = int(time.time())
 # need to make sure we don't go into the future...

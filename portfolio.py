@@ -6,40 +6,20 @@ class Portfolio:
     def __init__(self, timestamp, exchange):
         self.current_liquid_funds = 0
         self.current_holdings = {}
-        exchange.value_portfolio(timestamp, self)
+        self.initial_value = exchange.value_portfolio(timestamp, self)
 
     def calculate_return(self, timestamp, exchange):
         # Update portfolio value after trading
-        # Get previous state
-        past_liquid_funds = self.current_liquid_funds
-        past_holdings = copy.deepcopy(self.current_holdings)
+        current_portfolio_value = exchange.value_portfolio(timestamp, self)
 
-        # Get previous total worth
-        past_values = np.asarray([past_holdings[coin_type]['val'] for coin_type in past_holdings
-                                  if not coin_type == exchange.haven_coin_type])
-        past_portfolio_value = np.sum(past_values) + past_liquid_funds
-
-        # Get new state
-        exchange.value_portfolio(timestamp, self)
-
-        # Get current total worth
+        # Get coins and values
         current_coins = [coin_type for coin_type in self.current_holdings
                          if not coin_type == exchange.haven_coin_type]
         current_values = np.asarray([self.current_holdings[coin_type]['val'] for coin_type in self.current_holdings
                                      if not coin_type == exchange.haven_coin_type])
-        current_portfolio_value = np.sum(current_values) + self.current_liquid_funds
 
         # Relative portfolio change
-        relative_change = 100 * (current_portfolio_value - past_portfolio_value) / past_portfolio_value
-
-        # Relative change per coin only makes sense for coins that we still hold
-        # relative_change_per_coin = 100 * np.asarray([((self.current_holdings[coin_type]['val'] /
-        #                                               past_holdings[coin_type]['val']) *
-        #                                              (self.current_holdings[coin_type]['num'] /
-        #                                               past_holdings[coin_type]['num']) - 1)
-        #                                             if coin_type in past_holdings else np.nan
-        #                                             for coin_type in self.current_holdings])
-        # relative_change_per_coin = np.round(relative_change_per_coin*100)/100
+        relative_change = 100 * (current_portfolio_value - self.initial_value) / self.initial_value
 
         print('Total change: ' + "{:.2f}".format(relative_change) + ' %')
         print("Coins are " + str(current_coins))

@@ -201,7 +201,7 @@ class Exchange:
                     portfolio.current_holdings[coin_type_held] = {'num': num_coin_held, 'val': value_coin_held}
 
                 print('Current portfolio value: ' + "{:.2f}".format(total_value_held) + ' euros')
-                return
+                return total_value_held
             except:
                 num_attempts += 1
 
