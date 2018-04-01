@@ -13,16 +13,13 @@ import coin as C
 
 
 class Manager:
-    def __init__(self, timestamp, flag_fake_exchange=False):
+    def __init__(self, timestamp, flag_fake_exchange=False,
+                 available_coin_types=['BTC', 'ETH', 'BNB', 'LTC', 'NEO']):
         # Coin info
-        # These coins are tradeable with USDT on binance
-        self.list_of_coin_types = ['BTC', 'ETH', 'BNB', 'LTC', 'NEO']
-        num_coin_types = len(self.list_of_coin_types)
-        self.coin_ids = (np.linspace(1, num_coin_types, num_coin_types) - 1).astype('int')
-
+        self.list_of_coin_types = []
+        self.coin_ids = []
         self.coins = {}
-        for coin_type in self.list_of_coin_types:
-            self.coins[coin_type] = C.Coin(coin_type)
+        self.set_available_coin_types(available_coin_types)
 
         binance = ccxt.binance()
         mat_file = sio.loadmat("api_things.mat")
@@ -37,10 +34,10 @@ class Manager:
             self.exchange = E.Exchange(marketplace=binance, haven_marketplace=ccxt.bitfinex())  # Default haven = USDT
 
         # thresholds (euros) at which to buy / sell, and the value (euros) of the order if buying
-        self.threshold_buy_ratio = -10#0.5  # percent expected
-        self.threshold_buy_ratio_2 = -10#2
-        self.threshold_sell_ratio = 10#-0.5  # percent expected (-ive for loss) - sell at low gain to pre-empt fall
-        self.threshold_sell_ratio_2 = 10#-2
+        self.threshold_buy_ratio = 0.5  # percent expected
+        self.threshold_buy_ratio_2 = 2
+        self.threshold_sell_ratio = -0.5  # percent expected (-ive for loss) - sell at low gain to pre-empt fall
+        self.threshold_sell_ratio_2 = -2
         self.buy_value = 5  # euros
         self.prediction_time = 15 * 60  # seconds
         self.backsampling_time = 15 * 60  # seconds
@@ -91,7 +88,7 @@ class Manager:
             self.manage_orders(df_transactions_to_make=transactions_to_make, timeout=60)
 
         # Update all coin plots
-        self.update_coin_plots()
+        self.update_coin_plots(timestamp)
 
         # return True if any trade
         return flag_any_sells or flag_any_buys
@@ -150,8 +147,8 @@ class Manager:
             c.forecast_future_price(self.forecaster, now_timestamp, future_timestamp)
             c.calculate_past_price_gradient(self.exchange, past_timestamp, self.backsampling_time)
             print("Current price of " + coin_type + " is " + str(c.current_price))
-            print("Last change: " + str(c.past_price_gradient) + \
-                  " % ; Predicted change: " + str(c.current_price_gradient) + " %")
+            print("Last change: " + str(c.past_price_ratio) + \
+                  " % ; Predicted change: " + str(c.current_price_ratio) + " %")
             print("")
 
     def choose_trades(self):
@@ -162,12 +159,12 @@ class Manager:
 
         for coin_type in self.list_of_coin_types:
             c = self.coins[coin_type]
-            change_in_gradient = c.current_price_gradient - c.past_price_gradient
+            change_in_gradient = c.current_price_ratio - c.past_price_ratio
 
             # SELL anything that's performing worse than threshold and that we own enough of
             flag_loss = np.logical_or(
                 np.less(change_in_gradient, self.threshold_sell_ratio),
-                np.less(c.current_price_gradient, self.threshold_sell_ratio_2))
+                np.less(c.current_price_ratio, self.threshold_sell_ratio_2))
             flag_have_coin = np.greater(c.num_coin_held, 0)
             if np.logical_and(flag_loss, flag_have_coin):
                 # No priorities here
@@ -177,10 +174,10 @@ class Manager:
             # BUY anything that's performing better than threshold
             flag_gain = np.logical_or(
                 np.greater(change_in_gradient, self.threshold_buy_ratio),
-                np.greater(c.current_price_gradient, self.threshold_buy_ratio_2))
+                np.greater(c.current_price_ratio, self.threshold_buy_ratio_2))
             if flag_gain:
                 # We want to sort by price gradient, so add this to the list for now
-                coins_to_buy.append((coin_type, c.current_price_gradient))
+                coins_to_buy.append((coin_type, c.current_price_ratio))
 
         # This sorts coins_to_buy by numerical data (price gradient) in ascending order
         coins_to_buy.sort()
@@ -205,12 +202,23 @@ class Manager:
             coins_to_buy[idx] = (coin_type, buy_amount)
             total_liquid_funds -= funds_to_spend
             print('Buying ' + str(buy_amount) + ' ' + coin_type + ' for expected '
-                  + str(self.coins[coin_type].current_price_gradient) + ' % gainz')
+                  + str(self.coins[coin_type].current_price_ratio) + ' % gainz')
             if total_liquid_funds <= 0:
                 break
 
-    def update_coin_plots(self):
-        pass
+    def update_coin_plots(self, timestamp):
+        for coin_type in self.list_of_coin_types:
+            c = self.coins[coin_type]
+            c.update_plot(self.exchange, timestamp)
 
     def update_portfolio_plot(self):
         pass
+
+    def set_available_coin_types(self, available_coin_types):
+        self.list_of_coin_types = available_coin_types
+        num_coin_types = len(self.list_of_coin_types)
+        self.coin_ids = (np.linspace(1, num_coin_types, num_coin_types) - 1).astype('int')
+
+        self.coins = {}
+        for coin_type in self.list_of_coin_types:
+            self.coins[coin_type] = C.Coin(coin_type)
